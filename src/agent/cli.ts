@@ -7,11 +7,12 @@ type CliOptions = {
   system?: string;
   thinking?: string;
   cwd?: string;
+  session?: string;
   help?: boolean;
 };
 
 function printUsage() {
-  console.log("Usage: pnpm agent:cli [--provider PROVIDER] [--model MODEL] [--system TEXT] [--thinking LEVEL] [--cwd DIR] <prompt>");
+  console.log("Usage: pnpm agent:cli [--provider PROVIDER] [--model MODEL] [--system TEXT] [--thinking LEVEL] [--cwd DIR] [--session ID] <prompt>");
   console.log("       echo \"your prompt\" | pnpm agent:cli");
 }
 
@@ -45,6 +46,10 @@ function parseArgs(argv: string[]) {
     }
     if (arg === "--cwd") {
       opts.cwd = args.shift();
+      continue;
+    }
+    if (arg === "--session") {
+      opts.session = args.shift();
       continue;
     }
     if (arg === "--") {
@@ -88,6 +93,7 @@ async function main() {
     systemPrompt: opts.system,
     thinkingLevel: opts.thinking as any,
     cwd: opts.cwd,
+    sessionId: opts.session,
   });
 
   const result = await agent.run(finalPrompt);

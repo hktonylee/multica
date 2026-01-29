@@ -21,6 +21,7 @@ export class Agent {
         stdout: this.createChannelStream("[assistant] "),
         stderr: this.createChannelStream("[tool] "),
       },
+      sessionId: this.id,
     });
   }
 

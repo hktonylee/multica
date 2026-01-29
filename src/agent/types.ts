@@ -16,5 +16,6 @@ export type AgentOptions = {
   systemPrompt?: string;
   thinkingLevel?: ThinkingLevel;
   cwd?: string;
+  sessionId?: string;
   logger?: AgentLogger;
 };
