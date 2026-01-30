@@ -8,6 +8,7 @@ import {
 } from "@multica/ui/components/ui/sidebar";
 import { AppSidebar } from "@multica/ui/components/app-sidebar";
 import { ThemeProvider } from "@multica/ui/components/theme-provider";
+import { Toaster } from "@multica/ui/components/ui/sonner";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
@@ -55,6 +56,7 @@ export default function RootLayout({
             </SidebarInset>
           </SidebarProvider>
         </ThemeProvider>
+        <Toaster />
       </body>
     </html>
   );

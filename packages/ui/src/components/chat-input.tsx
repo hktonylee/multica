@@ -17,7 +17,7 @@ export function ChatInput() {
   };
 
   return (
-    <div className="bg-card rounded-xl p-3 border border-border">
+    <div className="bg-card rounded-xl p-3 pt-1 border border-border">
       <textarea
         ref={textareaRef}
         rows={2}
