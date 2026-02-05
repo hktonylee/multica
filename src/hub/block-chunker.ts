@@ -51,8 +51,8 @@ function detectFenceAt(text: string, upTo: number): FenceInfo | null {
     if (openFence === null) {
       // Opening a new fence
       openFence = { marker, lang };
-    } else if (markerChar === openFence.marker[0] && marker.length >= openFence.marker.length) {
-      // Closing the current fence (same char, at least as many chars)
+    } else if (markerChar === openFence.marker[0] && marker.length >= openFence.marker.length && lang === "") {
+      // Closing the current fence (same char, at least as many chars, no info string per CommonMark)
       openFence = null;
     }
     // Otherwise: different char or shorter marker, not a close — ignore

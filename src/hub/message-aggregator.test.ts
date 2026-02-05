@@ -112,6 +112,14 @@ describe("MessageAggregator", () => {
       expect(onBlock).not.toHaveBeenCalled();
     });
 
+    it("passes through tool_execution_update immediately", () => {
+      const agg = new MessageAggregator(smallConfig(), onBlock, onPassthrough);
+      const event = { type: "tool_execution_update", toolCallId: "tool-1", content: "output" } as unknown as AgentEvent;
+      agg.handleEvent(event);
+      expect(onPassthrough).toHaveBeenCalledWith(event);
+      expect(onBlock).not.toHaveBeenCalled();
+    });
+
     it("passes through compaction_start immediately", () => {
       const agg = new MessageAggregator(smallConfig(), onBlock, onPassthrough);
       const event = makeCompactionStart();

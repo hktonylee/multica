@@ -223,6 +223,23 @@ describe("BlockChunker", () => {
       expect(chunk + remainder).toBe(text);
     });
 
+    it("does not treat fence with info string as closing fence", () => {
+      const chunker = new BlockChunker(cfg({ minChars: 10, maxChars: 500 }));
+      // The second ```python should NOT close the first fence (CommonMark: closing fence has no info string)
+      const text = "Before.\n\n```python\ncode line 1\n```python\ncode line 2\n```\n\nAfter text here.";
+      const result = chunker.tryChunk(text);
+      expect(result).not.toBeNull();
+      const chunk = result!.chunk;
+      // The split should not land between ```python and ```python (inside fence)
+      // It should either be before the fence or after the closing ```
+      const fenceOpens = (chunk.match(/```python/g) || []).length;
+      const fenceCloses = (chunk.match(/^```$/gm) || []).length;
+      if (fenceOpens > 0) {
+        // If chunk includes opening fences, it must include the real close
+        expect(fenceCloses).toBeGreaterThanOrEqual(1);
+      }
+    });
+
     it("handles multiple sequential code blocks", () => {
       const chunker = new BlockChunker(cfg({ minChars: 10, maxChars: 500 }));
       const text = "```js\nfoo()\n```\n\n```py\nbar()\n```\n\nEnd.";
