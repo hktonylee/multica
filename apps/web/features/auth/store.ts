@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import type { User } from "@/shared/types";
 import { api } from "@/shared/api";
+import { setLoggedInCookie, clearLoggedInCookie } from "./auth-cookie";
 
 interface AuthState {
   user: User | null;
@@ -48,6 +49,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     const { token, user } = await api.verifyCode(email, code);
     localStorage.setItem("multica_token", token);
     api.setToken(token);
+    setLoggedInCookie();
     set({ user });
     return user;
   },
@@ -57,6 +59,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     localStorage.removeItem("multica_workspace_id");
     api.setToken(null);
     api.setWorkspaceId(null);
+    clearLoggedInCookie();
     set({ user: null });
   },
 
