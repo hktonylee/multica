@@ -1,65 +1,25 @@
 "use client";
 
-import { useMemo } from "react";
-import Link from "next/link";
-import { ChevronRight, User, Bot, SquarePen, ListTodo } from "lucide-react";
-import { Accordion } from "@base-ui/react/accordion";
-import type { Issue } from "@/shared/types";
-import { useAuthStore } from "@/features/auth";
-import { useWorkspaceStore } from "@/features/workspace";
-import { useIssueStore } from "@/features/issues/store";
-import { WorkspaceAvatar } from "@/features/workspace";
-import { StatusIcon } from "@/features/issues/components/status-icon";
-import { PriorityIcon } from "@/features/issues/components/priority-icon";
-import { ActorAvatar } from "@/components/common/actor-avatar";
+import { useCallback, useEffect, useMemo } from "react";
+import { useStore } from "zustand";
+import { toast } from "sonner";
+import { ChevronRight } from "lucide-react";
+import type { IssueStatus } from "@/shared/types";
 import { Skeleton } from "@/components/ui/skeleton";
-
-interface GroupConfig {
-  key: string;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-}
-
-const GROUPS: GroupConfig[] = [
-  { key: "assigned_to_me", label: "Assigned to me", icon: User },
-  { key: "assigned_to_my_agents", label: "Assigned to my agents", icon: Bot },
-  { key: "created_by_me", label: "Created by me", icon: SquarePen },
-];
-
-function formatDate(date: string): string {
-  return new Date(date).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  });
-}
-
-function IssueRow({ issue }: { issue: Issue }) {
-  return (
-    <Link
-      href={`/issues/${issue.id}`}
-      className="flex h-9 items-center gap-2 px-4 text-sm transition-colors hover:bg-accent/50"
-    >
-      <PriorityIcon priority={issue.priority} className="shrink-0" />
-      <StatusIcon status={issue.status} className="h-3.5 w-3.5 shrink-0" />
-      <span className="w-16 shrink-0 text-xs text-muted-foreground">
-        {issue.identifier}
-      </span>
-      <span className="min-w-0 flex-1 truncate">{issue.title}</span>
-      {issue.due_date && (
-        <span className="shrink-0 text-xs text-muted-foreground">
-          {formatDate(issue.due_date)}
-        </span>
-      )}
-      {issue.assignee_type && issue.assignee_id && (
-        <ActorAvatar
-          actorType={issue.assignee_type}
-          actorId={issue.assignee_id}
-          size={20}
-        />
-      )}
-    </Link>
-  );
-}
+import { useAuthStore } from "@/features/auth";
+import { useWorkspaceStore, WorkspaceAvatar } from "@/features/workspace";
+import { useIssueStore } from "@/features/issues/store";
+import { filterIssues } from "@/features/issues/utils/filter";
+import { BOARD_STATUSES } from "@/features/issues/config";
+import { ViewStoreProvider } from "@/features/issues/stores/view-store-context";
+import { useIssueSelectionStore } from "@/features/issues/stores/selection-store";
+import { BoardView } from "@/features/issues/components/board-view";
+import { ListView } from "@/features/issues/components/list-view";
+import { BatchActionToolbar } from "@/features/issues/components/batch-action-toolbar";
+import { registerViewStoreForWorkspaceSync } from "@/features/issues/stores/view-store";
+import { api } from "@/shared/api";
+import { myIssuesViewStore } from "../stores/my-issues-view-store";
+import { MyIssuesHeader } from "./my-issues-header";
 
 export function MyIssuesPage() {
   const user = useAuthStore((s) => s.user);
@@ -68,30 +28,85 @@ export function MyIssuesPage() {
   const allIssues = useIssueStore((s) => s.issues);
   const loading = useIssueStore((s) => s.loading);
 
+  const viewMode = useStore(myIssuesViewStore, (s) => s.viewMode);
+  const statusFilters = useStore(myIssuesViewStore, (s) => s.statusFilters);
+  const priorityFilters = useStore(myIssuesViewStore, (s) => s.priorityFilters);
+
+  useEffect(() => {
+    registerViewStoreForWorkspaceSync(myIssuesViewStore);
+  }, []);
+
+  useEffect(() => {
+    useIssueSelectionStore.getState().clear();
+  }, [viewMode]);
+
   const myAgentIds = useMemo(() => {
     if (!user) return new Set<string>();
-    return new Set(agents.filter((a) => a.owner_id === user.id).map((a) => a.id));
+    return new Set(
+      agents.filter((a) => a.owner_id === user.id).map((a) => a.id),
+    );
   }, [agents, user]);
 
-  const grouped = useMemo(() => {
-    if (!user) return new Map<string, Issue[]>();
-
-    const assignedToMe = allIssues.filter(
-      (i) => i.assignee_type === "member" && i.assignee_id === user.id,
+  // Pre-filter: union of (assigned to me + my agents + created by me)
+  const myIssues = useMemo(() => {
+    if (!user) return [];
+    return allIssues.filter(
+      (i) =>
+        (i.assignee_type === "member" && i.assignee_id === user.id) ||
+        (i.assignee_type === "agent" &&
+          i.assignee_id &&
+          myAgentIds.has(i.assignee_id)) ||
+        (i.creator_type === "member" && i.creator_id === user.id),
     );
-    const assignedToMyAgents = allIssues.filter(
-      (i) => i.assignee_type === "agent" && i.assignee_id && myAgentIds.has(i.assignee_id),
-    );
-    const createdByMe = allIssues.filter(
-      (i) => i.creator_type === "member" && i.creator_id === user.id,
-    );
-
-    const map = new Map<string, Issue[]>();
-    map.set("assigned_to_me", assignedToMe);
-    map.set("assigned_to_my_agents", assignedToMyAgents);
-    map.set("created_by_me", createdByMe);
-    return map;
   }, [allIssues, user, myAgentIds]);
+
+  // Apply status/priority filters from view store
+  const issues = useMemo(
+    () =>
+      filterIssues(myIssues, {
+        statusFilters,
+        priorityFilters,
+        assigneeFilters: [],
+        includeNoAssignee: false,
+        creatorFilters: [],
+      }),
+    [myIssues, statusFilters, priorityFilters],
+  );
+
+  const visibleStatuses = useMemo(() => {
+    if (statusFilters.length > 0)
+      return BOARD_STATUSES.filter((s) => statusFilters.includes(s));
+    return BOARD_STATUSES;
+  }, [statusFilters]);
+
+  const hiddenStatuses = useMemo(() => {
+    return BOARD_STATUSES.filter((s) => !visibleStatuses.includes(s));
+  }, [visibleStatuses]);
+
+  const handleMoveIssue = useCallback(
+    (issueId: string, newStatus: IssueStatus, newPosition?: number) => {
+      const viewState = myIssuesViewStore.getState();
+      if (viewState.sortBy !== "position") {
+        viewState.setSortBy("position");
+        viewState.setSortDirection("asc");
+      }
+
+      const updates: Partial<{ status: IssueStatus; position: number }> = {
+        status: newStatus,
+      };
+      if (newPosition !== undefined) updates.position = newPosition;
+
+      useIssueStore.getState().updateIssue(issueId, updates);
+
+      api.updateIssue(issueId, updates).catch(() => {
+        toast.error("Failed to move issue");
+        api.listIssues({ limit: 200 }).then((res) => {
+          useIssueStore.getState().setIssues(res.issues);
+        });
+      });
+    },
+    [],
+  );
 
   if (loading) {
     return (
@@ -100,12 +115,16 @@ export function MyIssuesPage() {
           <Skeleton className="h-5 w-5 rounded" />
           <Skeleton className="h-4 w-32" />
         </div>
-        <div className="flex-1 p-4 space-y-4">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="space-y-2">
-              <Skeleton className="h-8 w-48" />
-              <Skeleton className="h-9 w-full" />
-              <Skeleton className="h-9 w-full" />
+        <div className="flex h-12 shrink-0 items-center justify-between border-b px-4">
+          <Skeleton className="h-5 w-24" />
+          <Skeleton className="h-8 w-24" />
+        </div>
+        <div className="flex flex-1 min-h-0 gap-4 overflow-x-auto p-4">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="flex min-w-52 flex-1 flex-col gap-2">
+              <Skeleton className="h-4 w-20" />
+              <Skeleton className="h-24 w-full rounded-lg" />
+              <Skeleton className="h-24 w-full rounded-lg" />
             </div>
           ))}
         </div>
@@ -115,7 +134,7 @@ export function MyIssuesPage() {
 
   return (
     <div className="flex flex-1 min-h-0 flex-col">
-      {/* Header: Workspace breadcrumb */}
+      {/* Header 1: Workspace breadcrumb */}
       <div className="flex h-12 shrink-0 items-center gap-1.5 border-b px-4">
         <WorkspaceAvatar name={workspace?.name ?? "W"} size="sm" />
         <span className="text-sm text-muted-foreground">
@@ -125,47 +144,26 @@ export function MyIssuesPage() {
         <span className="text-sm font-medium">My Issues</span>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 min-h-0 overflow-y-auto p-2">
-        <Accordion.Root
-          multiple
-          className="space-y-1"
-          defaultValue={GROUPS.map((g) => g.key)}
-        >
-          {GROUPS.map((group) => {
-            const issues = grouped.get(group.key) ?? [];
-            const Icon = group.icon;
+      {/* Header 2: View toggle + filters */}
+      <MyIssuesHeader allIssues={myIssues} />
 
-            return (
-              <Accordion.Item key={group.key} value={group.key}>
-                <Accordion.Header className="flex h-10 items-center rounded-lg bg-muted/40 transition-colors hover:bg-accent/30">
-                  <Accordion.Trigger className="group/trigger flex flex-1 items-center gap-2 px-3 h-full text-left outline-none">
-                    <ChevronRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-aria-expanded/trigger:rotate-90" />
-                    <Icon className="size-3.5 text-muted-foreground" />
-                    <span className="text-sm font-medium">
-                      {group.label}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {issues.length}
-                    </span>
-                  </Accordion.Trigger>
-                </Accordion.Header>
-                <Accordion.Panel className="pt-1">
-                  {issues.length > 0 ? (
-                    issues.map((issue) => (
-                      <IssueRow key={issue.id} issue={issue} />
-                    ))
-                  ) : (
-                    <p className="py-6 text-center text-xs text-muted-foreground">
-                      No issues
-                    </p>
-                  )}
-                </Accordion.Panel>
-              </Accordion.Item>
-            );
-          })}
-        </Accordion.Root>
-      </div>
+      {/* Content: scrollable */}
+      <ViewStoreProvider store={myIssuesViewStore}>
+        <div className="flex flex-col flex-1 min-h-0">
+          {viewMode === "board" ? (
+            <BoardView
+              issues={issues}
+              allIssues={myIssues}
+              visibleStatuses={visibleStatuses}
+              hiddenStatuses={hiddenStatuses}
+              onMoveIssue={handleMoveIssue}
+            />
+          ) : (
+            <ListView issues={issues} visibleStatuses={visibleStatuses} />
+          )}
+        </div>
+        {viewMode === "list" && <BatchActionToolbar />}
+      </ViewStoreProvider>
     </div>
   );
 }

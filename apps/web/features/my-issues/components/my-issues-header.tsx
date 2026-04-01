@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useStore } from "zustand";
 import {
   ArrowDown,
   ArrowUp,
-  Bot,
   Check,
   ChevronDown,
   CircleDot,
@@ -14,12 +14,8 @@ import {
   Plus,
   SignalHigh,
   SlidersHorizontal,
-  User,
-  UserMinus,
-  UserPen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useIssueStore } from "@/features/issues/store";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -47,20 +43,16 @@ import {
   PRIORITY_CONFIG,
 } from "@/features/issues/config";
 import { StatusIcon, PriorityIcon } from "@/features/issues/components";
-import { useWorkspaceStore, useActorName } from "@/features/workspace";
 import {
-  useIssueViewStore,
   SORT_OPTIONS,
   CARD_PROPERTY_OPTIONS,
-  type ActorFilterValue,
 } from "@/features/issues/stores/view-store";
 import { filterIssues } from "@/features/issues/utils/filter";
 import type { Issue } from "@/shared/types";
+import { myIssuesViewStore } from "../stores/my-issues-view-store";
 
 // ---------------------------------------------------------------------------
 // HoverCheck — shadcn official pattern (PR #6862)
-// Uses data-selected attr instead of Checkbox component to avoid
-// DropdownMenuCheckboxItem's focus:**:text-accent-foreground cascade.
 // ---------------------------------------------------------------------------
 
 const FILTER_ITEM_CLASS =
@@ -84,15 +76,10 @@ function HoverCheck({ checked }: { checked: boolean }) {
 function getActiveFilterCount(state: {
   statusFilters: string[];
   priorityFilters: string[];
-  assigneeFilters: ActorFilterValue[];
-  includeNoAssignee: boolean;
-  creatorFilters: ActorFilterValue[];
 }) {
   let count = 0;
   if (state.statusFilters.length > 0) count++;
   if (state.priorityFilters.length > 0) count++;
-  if (state.assigneeFilters.length > 0 || state.includeNoAssignee) count++;
-  if (state.creatorFilters.length > 0) count++;
   return count;
 }
 
@@ -100,201 +87,44 @@ function useIssueCounts(allIssues: Issue[]) {
   return useMemo(() => {
     const status = new Map<string, number>();
     const priority = new Map<string, number>();
-    const assignee = new Map<string, number>();
-    const creator = new Map<string, number>();
-    let noAssignee = 0;
 
     for (const issue of allIssues) {
       status.set(issue.status, (status.get(issue.status) ?? 0) + 1);
       priority.set(issue.priority, (priority.get(issue.priority) ?? 0) + 1);
-
-      if (!issue.assignee_id) {
-        noAssignee++;
-      } else {
-        const aKey = `${issue.assignee_type}:${issue.assignee_id}`;
-        assignee.set(aKey, (assignee.get(aKey) ?? 0) + 1);
-      }
-
-      const cKey = `${issue.creator_type}:${issue.creator_id}`;
-      creator.set(cKey, (creator.get(cKey) ?? 0) + 1);
     }
 
-    return { status, priority, assignee, creator, noAssignee };
+    return { status, priority };
   }, [allIssues]);
 }
 
 // ---------------------------------------------------------------------------
-// Actor sub-menu content (shared between Assignee and Creator)
+// MyIssuesHeader
 // ---------------------------------------------------------------------------
 
-function ActorSubContent({
-  counts,
-  selected,
-  onToggle,
-  showNoAssignee,
-  includeNoAssignee,
-  onToggleNoAssignee,
-  noAssigneeCount,
-}: {
-  counts: Map<string, number>;
-  selected: ActorFilterValue[];
-  onToggle: (value: ActorFilterValue) => void;
-  showNoAssignee?: boolean;
-  includeNoAssignee?: boolean;
-  onToggleNoAssignee?: () => void;
-  noAssigneeCount?: number;
-}) {
-  const [search, setSearch] = useState("");
-  const members = useWorkspaceStore((s) => s.members);
-  const agents = useWorkspaceStore((s) => s.agents);
-  const { getActorInitials } = useActorName();
+export function MyIssuesHeader({ allIssues }: { allIssues: Issue[] }) {
+  const viewMode = useStore(myIssuesViewStore, (s) => s.viewMode);
+  const statusFilters = useStore(myIssuesViewStore, (s) => s.statusFilters);
+  const priorityFilters = useStore(myIssuesViewStore, (s) => s.priorityFilters);
+  const sortBy = useStore(myIssuesViewStore, (s) => s.sortBy);
+  const sortDirection = useStore(myIssuesViewStore, (s) => s.sortDirection);
+  const cardProperties = useStore(myIssuesViewStore, (s) => s.cardProperties);
+  const act = myIssuesViewStore.getState();
 
-  const query = search.toLowerCase();
-  const filteredMembers = members.filter((m) =>
-    m.name.toLowerCase().includes(query),
-  );
-  const filteredAgents = agents.filter((a) =>
-    a.name.toLowerCase().includes(query),
-  );
-
-  const isSelected = (type: "member" | "agent", id: string) =>
-    selected.some((f) => f.type === type && f.id === id);
-
-  return (
-    <>
-      <div className="px-2 py-1.5 border-b border-foreground/5">
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Filter..."
-          className="w-full bg-transparent text-sm placeholder:text-muted-foreground outline-none"
-          autoFocus
-        />
-      </div>
-
-      <div className="max-h-64 overflow-y-auto p-1">
-        {showNoAssignee &&
-          (!query || "no assignee".includes(query) || "unassigned".includes(query)) && (
-            <DropdownMenuCheckboxItem
-              checked={includeNoAssignee ?? false}
-              onCheckedChange={() => onToggleNoAssignee?.()}
-              className={FILTER_ITEM_CLASS}
-            >
-              <HoverCheck checked={includeNoAssignee ?? false} />
-              <UserMinus className="size-3.5 text-muted-foreground" />
-              No assignee
-              {(noAssigneeCount ?? 0) > 0 && (
-                <span className="ml-auto text-xs text-muted-foreground">
-                  {noAssigneeCount}
-                </span>
-              )}
-            </DropdownMenuCheckboxItem>
-          )}
-
-        {filteredMembers.length > 0 && (
-          <DropdownMenuGroup>
-            <DropdownMenuLabel>Members</DropdownMenuLabel>
-            {filteredMembers.map((m) => {
-              const checked = isSelected("member", m.user_id);
-              const count = counts.get(`member:${m.user_id}`) ?? 0;
-              return (
-                <DropdownMenuCheckboxItem
-                  key={m.user_id}
-                  checked={checked}
-                  onCheckedChange={() =>
-                    onToggle({ type: "member", id: m.user_id })
-                  }
-                  className={FILTER_ITEM_CLASS}
-                >
-                  <HoverCheck checked={checked} />
-                  <div className="inline-flex size-4.5 shrink-0 items-center justify-center rounded-full bg-muted text-[8px] font-medium text-muted-foreground">
-                    {getActorInitials("member", m.user_id)}
-                  </div>
-                  <span className="truncate">{m.name}</span>
-                  {count > 0 && (
-                    <span className="ml-auto text-xs text-muted-foreground">
-                      {count}
-                    </span>
-                  )}
-                </DropdownMenuCheckboxItem>
-              );
-            })}
-          </DropdownMenuGroup>
-        )}
-
-        {filteredAgents.length > 0 && (
-          <DropdownMenuGroup>
-            <DropdownMenuLabel>Agents</DropdownMenuLabel>
-            {filteredAgents.map((a) => {
-              const checked = isSelected("agent", a.id);
-              const count = counts.get(`agent:${a.id}`) ?? 0;
-              return (
-                <DropdownMenuCheckboxItem
-                  key={a.id}
-                  checked={checked}
-                  onCheckedChange={() =>
-                    onToggle({ type: "agent", id: a.id })
-                  }
-                  className={FILTER_ITEM_CLASS}
-                >
-                  <HoverCheck checked={checked} />
-                  <div className="inline-flex size-4.5 shrink-0 items-center justify-center rounded-full bg-info/10 text-info">
-                    <Bot className="size-2.5" />
-                  </div>
-                  <span className="truncate">{a.name}</span>
-                  {count > 0 && (
-                    <span className="ml-auto text-xs text-muted-foreground">
-                      {count}
-                    </span>
-                  )}
-                </DropdownMenuCheckboxItem>
-              );
-            })}
-          </DropdownMenuGroup>
-        )}
-
-        {filteredMembers.length === 0 && filteredAgents.length === 0 && search && (
-          <div className="px-2 py-3 text-center text-sm text-muted-foreground">
-            No results
-          </div>
-        )}
-      </div>
-    </>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// IssuesHeader
-// ---------------------------------------------------------------------------
-
-export function IssuesHeader() {
-  const viewMode = useIssueViewStore((s) => s.viewMode);
-  const statusFilters = useIssueViewStore((s) => s.statusFilters);
-  const priorityFilters = useIssueViewStore((s) => s.priorityFilters);
-  const assigneeFilters = useIssueViewStore((s) => s.assigneeFilters);
-  const includeNoAssignee = useIssueViewStore((s) => s.includeNoAssignee);
-  const creatorFilters = useIssueViewStore((s) => s.creatorFilters);
-  const sortBy = useIssueViewStore((s) => s.sortBy);
-  const sortDirection = useIssueViewStore((s) => s.sortDirection);
-  const cardProperties = useIssueViewStore((s) => s.cardProperties);
-  const act = useIssueViewStore.getState();
-
-  const allIssues = useIssueStore((s) => s.issues);
   const counts = useIssueCounts(allIssues);
 
   const filteredCount = useMemo(
-    () => filterIssues(allIssues, { statusFilters, priorityFilters, assigneeFilters, includeNoAssignee, creatorFilters }).length,
-    [allIssues, statusFilters, priorityFilters, assigneeFilters, includeNoAssignee, creatorFilters],
+    () =>
+      filterIssues(allIssues, {
+        statusFilters,
+        priorityFilters,
+        assigneeFilters: [],
+        includeNoAssignee: false,
+        creatorFilters: [],
+      }).length,
+    [allIssues, statusFilters, priorityFilters],
   );
 
-  const filterCount = getActiveFilterCount({
-    statusFilters,
-    priorityFilters,
-    assigneeFilters,
-    includeNoAssignee,
-    creatorFilters,
-  });
+  const filterCount = getActiveFilterCount({ statusFilters, priorityFilters });
 
   const sortLabel =
     SORT_OPTIONS.find((o) => o.value === sortBy)?.label ?? "Manual";
@@ -308,7 +138,11 @@ export function IssuesHeader() {
           <DropdownMenuTrigger
             render={
               <Button variant="outline" size="sm">
-                {viewMode === "board" ? <Columns3 className="size-3.5" /> : <List className="size-3.5" />}
+                {viewMode === "board" ? (
+                  <Columns3 className="size-3.5" />
+                ) : (
+                  <List className="size-3.5" />
+                )}
                 {viewMode === "board" ? "Board" : "List"}
               </Button>
             }
@@ -335,7 +169,9 @@ export function IssuesHeader() {
               <Button
                 variant="outline"
                 size="sm"
-                className={hasActiveFilters ? "border-primary/50 text-primary" : ""}
+                className={
+                  hasActiveFilters ? "border-primary/50 text-primary" : ""
+                }
               >
                 <Filter className="size-3.5" />
                 Filter
@@ -420,50 +256,6 @@ export function IssuesHeader() {
               </DropdownMenuSubContent>
             </DropdownMenuSub>
 
-            {/* Assignee */}
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                <User className="size-3.5" />
-                <span className="flex-1">Assignee</span>
-                {(assigneeFilters.length > 0 || includeNoAssignee) && (
-                  <span className="text-xs text-primary font-medium">
-                    {assigneeFilters.length + (includeNoAssignee ? 1 : 0)}
-                  </span>
-                )}
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent className="w-auto min-w-52 p-0">
-                <ActorSubContent
-                  counts={counts.assignee}
-                  selected={assigneeFilters}
-                  onToggle={act.toggleAssigneeFilter}
-                  showNoAssignee
-                  includeNoAssignee={includeNoAssignee}
-                  onToggleNoAssignee={act.toggleNoAssignee}
-                  noAssigneeCount={counts.noAssignee}
-                />
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-
-            {/* Creator */}
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                <UserPen className="size-3.5" />
-                <span className="flex-1">Creator</span>
-                {creatorFilters.length > 0 && (
-                  <span className="text-xs text-primary font-medium">
-                    {creatorFilters.length}
-                  </span>
-                )}
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent className="w-auto min-w-52 p-0">
-                <ActorSubContent
-                  counts={counts.creator}
-                  selected={creatorFilters}
-                  onToggle={act.toggleCreatorFilter}
-                />
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-
             {/* Reset */}
             {hasActiveFilters && (
               <>
@@ -520,7 +312,9 @@ export function IssuesHeader() {
                   variant="outline"
                   size="icon-sm"
                   onClick={() =>
-                    act.setSortDirection(sortDirection === "asc" ? "desc" : "asc")
+                    act.setSortDirection(
+                      sortDirection === "asc" ? "desc" : "asc",
+                    )
                   }
                   title={sortDirection === "asc" ? "Ascending" : "Descending"}
                 >

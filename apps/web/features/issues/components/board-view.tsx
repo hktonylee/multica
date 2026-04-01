@@ -23,7 +23,7 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { ALL_STATUSES, STATUS_CONFIG } from "@/features/issues/config";
-import { useIssueViewStore } from "@/features/issues/stores/view-store";
+import { useViewStoreApi } from "@/features/issues/stores/view-store-context";
 import { StatusIcon } from "./status-icon";
 import { BoardColumn } from "./board-column";
 import { BoardCardContent } from "./board-card";
@@ -205,6 +205,7 @@ function HiddenColumnsPanel({
   hiddenStatuses: IssueStatus[];
   issues: Issue[];
 }) {
+  const viewStoreApi = useViewStoreApi();
   return (
     <div className="flex w-[240px] shrink-0 flex-col">
       <div className="mb-2 flex items-center gap-2 px-1">
@@ -242,7 +243,7 @@ function HiddenColumnsPanel({
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem
                       onClick={() =>
-                        useIssueViewStore.getState().showStatus(status)
+                        viewStoreApi.getState().showStatus(status)
                       }
                     >
                       <Eye className="size-3.5" />

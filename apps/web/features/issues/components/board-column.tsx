@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { STATUS_CONFIG } from "@/features/issues/config";
 import { useModalStore } from "@/features/modals";
-import { useIssueViewStore } from "@/features/issues/stores/view-store";
+import { useViewStore, useViewStoreApi } from "@/features/issues/stores/view-store-context";
 import { sortIssues } from "@/features/issues/utils/sort";
 import { StatusIcon } from "./status-icon";
 import { DraggableBoardCard } from "./board-card";
@@ -29,8 +29,9 @@ export function BoardColumn({
 }) {
   const cfg = STATUS_CONFIG[status];
   const { setNodeRef, isOver } = useDroppable({ id: status });
-  const sortBy = useIssueViewStore((s) => s.sortBy);
-  const sortDirection = useIssueViewStore((s) => s.sortDirection);
+  const viewStoreApi = useViewStoreApi();
+  const sortBy = useViewStore((s) => s.sortBy);
+  const sortDirection = useViewStore((s) => s.sortDirection);
 
   const sortedIssues = useMemo(
     () => sortIssues(issues, sortBy, sortDirection),
@@ -67,7 +68,7 @@ export function BoardColumn({
               }
             />
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => useIssueViewStore.getState().hideStatus(status)}>
+              <DropdownMenuItem onClick={() => viewStoreApi.getState().hideStatus(status)}>
                 <EyeOff className="size-3.5" />
                 Hide column
               </DropdownMenuItem>

@@ -13,7 +13,8 @@ import { useIssueStore } from "@/features/issues/store";
 import { PriorityIcon } from "./priority-icon";
 import { PriorityPicker, AssigneePicker, DueDatePicker } from "./pickers";
 import { PRIORITY_CONFIG } from "@/features/issues/config";
-import { useIssueViewStore, type CardProperties } from "@/features/issues/stores/view-store";
+import type { CardProperties } from "@/features/issues/stores/view-store";
+import { useViewStore } from "@/features/issues/stores/view-store-context";
 
 function formatDate(date: string): string {
   return new Date(date).toLocaleDateString("en-US", {
@@ -42,7 +43,7 @@ export const BoardCardContent = memo(function BoardCardContent({
   issue: Issue;
   editable?: boolean;
 }) {
-  const storeProperties = useIssueViewStore((s) => s.cardProperties);
+  const storeProperties = useViewStore((s) => s.cardProperties);
   const priorityCfg = PRIORITY_CONFIG[issue.priority];
 
   const handleUpdate = useCallback(

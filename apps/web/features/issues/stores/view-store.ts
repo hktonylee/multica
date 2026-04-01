@@ -1,6 +1,7 @@
 "use client";
 
 import { create } from "zustand";
+import { createStore, type StoreApi } from "zustand/vanilla";
 import { persist } from "zustand/middleware";
 import type { IssueStatus, IssuePriority } from "@/shared/types";
 import { ALL_STATUSES } from "@/features/issues/config";
@@ -36,7 +37,7 @@ export const CARD_PROPERTY_OPTIONS: { key: keyof CardProperties; label: string }
   { key: "dueDate", label: "Due date" },
 ];
 
-interface IssueViewState {
+export interface IssueViewState {
   viewMode: ViewMode;
   statusFilters: IssueStatus[];
   priorityFilters: IssuePriority[];
@@ -62,130 +63,142 @@ interface IssueViewState {
   toggleListCollapsed: (status: IssueStatus) => void;
 }
 
-export const useIssueViewStore = create<IssueViewState>()(
-  persist(
-    (set) => ({
-      viewMode: "board",
+const viewStoreSlice = (set: StoreApi<IssueViewState>["setState"]): IssueViewState => ({
+  viewMode: "board",
+  statusFilters: [],
+  priorityFilters: [],
+  assigneeFilters: [],
+  includeNoAssignee: false,
+  creatorFilters: [],
+  sortBy: "position",
+  sortDirection: "asc",
+  cardProperties: {
+    priority: true,
+    description: true,
+    assignee: true,
+    dueDate: true,
+  },
+  listCollapsedStatuses: [],
+
+  setViewMode: (mode) => set({ viewMode: mode }),
+  toggleStatusFilter: (status) =>
+    set((state) => ({
+      statusFilters: state.statusFilters.includes(status)
+        ? state.statusFilters.filter((s) => s !== status)
+        : [...state.statusFilters, status],
+    })),
+  togglePriorityFilter: (priority) =>
+    set((state) => ({
+      priorityFilters: state.priorityFilters.includes(priority)
+        ? state.priorityFilters.filter((p) => p !== priority)
+        : [...state.priorityFilters, priority],
+    })),
+  toggleAssigneeFilter: (value) =>
+    set((state) => {
+      const exists = state.assigneeFilters.some(
+        (f) => f.type === value.type && f.id === value.id,
+      );
+      return {
+        assigneeFilters: exists
+          ? state.assigneeFilters.filter(
+              (f) => !(f.type === value.type && f.id === value.id),
+            )
+          : [...state.assigneeFilters, value],
+      };
+    }),
+  toggleNoAssignee: () =>
+    set((state) => ({ includeNoAssignee: !state.includeNoAssignee })),
+  toggleCreatorFilter: (value) =>
+    set((state) => {
+      const exists = state.creatorFilters.some(
+        (f) => f.type === value.type && f.id === value.id,
+      );
+      return {
+        creatorFilters: exists
+          ? state.creatorFilters.filter(
+              (f) => !(f.type === value.type && f.id === value.id),
+            )
+          : [...state.creatorFilters, value],
+      };
+    }),
+  hideStatus: (status) =>
+    set((state) => {
+      // If no filter active, activate filter with all EXCEPT this one
+      if (state.statusFilters.length === 0) {
+        return { statusFilters: ALL_STATUSES.filter((s) => s !== status) };
+      }
+      return {
+        statusFilters: state.statusFilters.filter((s) => s !== status),
+      };
+    }),
+  showStatus: (status) =>
+    set((state) => {
+      if (state.statusFilters.length === 0) return state;
+      if (state.statusFilters.includes(status)) return state;
+      return { statusFilters: [...state.statusFilters, status] };
+    }),
+  clearFilters: () =>
+    set({
       statusFilters: [],
       priorityFilters: [],
       assigneeFilters: [],
       includeNoAssignee: false,
       creatorFilters: [],
-      sortBy: "position",
-      sortDirection: "asc",
-      cardProperties: {
-        priority: true,
-        description: true,
-        assignee: true,
-        dueDate: true,
-      },
-      listCollapsedStatuses: [],
-
-      setViewMode: (mode) => set({ viewMode: mode }),
-      toggleStatusFilter: (status) =>
-        set((state) => ({
-          statusFilters: state.statusFilters.includes(status)
-            ? state.statusFilters.filter((s) => s !== status)
-            : [...state.statusFilters, status],
-        })),
-      togglePriorityFilter: (priority) =>
-        set((state) => ({
-          priorityFilters: state.priorityFilters.includes(priority)
-            ? state.priorityFilters.filter((p) => p !== priority)
-            : [...state.priorityFilters, priority],
-        })),
-      toggleAssigneeFilter: (value) =>
-        set((state) => {
-          const exists = state.assigneeFilters.some(
-            (f) => f.type === value.type && f.id === value.id,
-          );
-          return {
-            assigneeFilters: exists
-              ? state.assigneeFilters.filter(
-                  (f) => !(f.type === value.type && f.id === value.id),
-                )
-              : [...state.assigneeFilters, value],
-          };
-        }),
-      toggleNoAssignee: () =>
-        set((state) => ({ includeNoAssignee: !state.includeNoAssignee })),
-      toggleCreatorFilter: (value) =>
-        set((state) => {
-          const exists = state.creatorFilters.some(
-            (f) => f.type === value.type && f.id === value.id,
-          );
-          return {
-            creatorFilters: exists
-              ? state.creatorFilters.filter(
-                  (f) => !(f.type === value.type && f.id === value.id),
-                )
-              : [...state.creatorFilters, value],
-          };
-        }),
-      hideStatus: (status) =>
-        set((state) => {
-          // If no filter active, activate filter with all EXCEPT this one
-          if (state.statusFilters.length === 0) {
-            return { statusFilters: ALL_STATUSES.filter((s) => s !== status) };
-          }
-          return {
-            statusFilters: state.statusFilters.filter((s) => s !== status),
-          };
-        }),
-      showStatus: (status) =>
-        set((state) => {
-          if (state.statusFilters.length === 0) return state;
-          if (state.statusFilters.includes(status)) return state;
-          return { statusFilters: [...state.statusFilters, status] };
-        }),
-      clearFilters: () =>
-        set({
-          statusFilters: [],
-          priorityFilters: [],
-          assigneeFilters: [],
-          includeNoAssignee: false,
-          creatorFilters: [],
-        }),
-      setSortBy: (field) => set({ sortBy: field }),
-      setSortDirection: (dir) => set({ sortDirection: dir }),
-      toggleCardProperty: (key) =>
-        set((state) => ({
-          cardProperties: {
-            ...state.cardProperties,
-            [key]: !state.cardProperties[key],
-          },
-        })),
-      toggleListCollapsed: (status) =>
-        set((state) => ({
-          listCollapsedStatuses: state.listCollapsedStatuses.includes(status)
-            ? state.listCollapsedStatuses.filter((s) => s !== status)
-            : [...state.listCollapsedStatuses, status],
-        })),
     }),
-    {
-      name: "multica_issues_view",
-      partialize: (state) => ({
-        viewMode: state.viewMode,
-        statusFilters: state.statusFilters,
-        priorityFilters: state.priorityFilters,
-        assigneeFilters: state.assigneeFilters,
-        includeNoAssignee: state.includeNoAssignee,
-        creatorFilters: state.creatorFilters,
-        sortBy: state.sortBy,
-        sortDirection: state.sortDirection,
-        cardProperties: state.cardProperties,
-        listCollapsedStatuses: state.listCollapsedStatuses,
-      }),
-    }
-  )
+  setSortBy: (field) => set({ sortBy: field }),
+  setSortDirection: (dir) => set({ sortDirection: dir }),
+  toggleCardProperty: (key) =>
+    set((state) => ({
+      cardProperties: {
+        ...state.cardProperties,
+        [key]: !state.cardProperties[key],
+      },
+    })),
+  toggleListCollapsed: (status) =>
+    set((state) => ({
+      listCollapsedStatuses: state.listCollapsedStatuses.includes(status)
+        ? state.listCollapsedStatuses.filter((s) => s !== status)
+        : [...state.listCollapsedStatuses, status],
+    })),
+});
+
+const viewStorePersistOptions = (name: string) => ({
+  name,
+  partialize: (state: IssueViewState) => ({
+    viewMode: state.viewMode,
+    statusFilters: state.statusFilters,
+    priorityFilters: state.priorityFilters,
+    assigneeFilters: state.assigneeFilters,
+    includeNoAssignee: state.includeNoAssignee,
+    creatorFilters: state.creatorFilters,
+    sortBy: state.sortBy,
+    sortDirection: state.sortDirection,
+    cardProperties: state.cardProperties,
+    listCollapsedStatuses: state.listCollapsedStatuses,
+  }),
+});
+
+/** Factory: creates a vanilla StoreApi for use with React Context. */
+export function createIssueViewStore(persistKey: string): StoreApi<IssueViewState> {
+  return createStore<IssueViewState>()(
+    persist(viewStoreSlice, viewStorePersistOptions(persistKey))
+  );
+}
+
+/** Global singleton for the /issues page. */
+export const useIssueViewStore = create<IssueViewState>()(
+  persist(viewStoreSlice, viewStorePersistOptions("multica_issues_view"))
 );
 
-// Clear actor-based filters when workspace switches (IDs are workspace-scoped).
+// Clear filters on all registered view stores when workspace switches.
 // Deferred to avoid circular dependency: view-store → workspace → issues → view-store.
-let _filterSubInitialized = false;
-export function initFilterWorkspaceSync() {
-  if (_filterSubInitialized) return;
-  _filterSubInitialized = true;
+const _syncedStores = new Set<StoreApi<IssueViewState>>();
+let _workspaceSyncInitialized = false;
+
+export function registerViewStoreForWorkspaceSync(store: StoreApi<IssueViewState>) {
+  _syncedStores.add(store);
+  if (_workspaceSyncInitialized) return;
+  _workspaceSyncInitialized = true;
 
   // Dynamic import breaks the circular module evaluation chain.
   import("@/features/workspace").then(({ useWorkspaceStore }) => {
@@ -193,9 +206,13 @@ export function initFilterWorkspaceSync() {
     useWorkspaceStore.subscribe((state) => {
       const id = state.workspace?.id;
       if (prevId && id !== prevId) {
-        useIssueViewStore.getState().clearFilters();
+        for (const s of _syncedStores) s.getState().clearFilters();
       }
       prevId = id;
     });
   });
 }
+
+/** Backward-compatible alias — registers the global singleton for workspace sync. */
+export const initFilterWorkspaceSync = () =>
+  registerViewStoreForWorkspaceSync(useIssueViewStore);

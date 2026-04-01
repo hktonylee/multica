@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import type { Issue, IssueStatus } from "@/shared/types";
 import { STATUS_CONFIG } from "@/features/issues/config";
 import { useModalStore } from "@/features/modals";
-import { useIssueViewStore } from "@/features/issues/stores/view-store";
+import { useViewStore } from "@/features/issues/stores/view-store-context";
 import { useIssueSelectionStore } from "@/features/issues/stores/selection-store";
 import { sortIssues } from "@/features/issues/utils/sort";
 import { StatusIcon } from "./status-icon";
@@ -21,12 +21,12 @@ export function ListView({
   issues: Issue[];
   visibleStatuses: IssueStatus[];
 }) {
-  const sortBy = useIssueViewStore((s) => s.sortBy);
-  const sortDirection = useIssueViewStore((s) => s.sortDirection);
-  const listCollapsedStatuses = useIssueViewStore(
+  const sortBy = useViewStore((s) => s.sortBy);
+  const sortDirection = useViewStore((s) => s.sortDirection);
+  const listCollapsedStatuses = useViewStore(
     (s) => s.listCollapsedStatuses
   );
-  const toggleListCollapsed = useIssueViewStore(
+  const toggleListCollapsed = useViewStore(
     (s) => s.toggleListCollapsed
   );
   const selectedIds = useIssueSelectionStore((s) => s.selectedIds);

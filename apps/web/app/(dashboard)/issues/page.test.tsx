@@ -150,9 +150,17 @@ vi.mock("@/features/issues/stores/view-store", () => ({
   ],
 }));
 
+// Mock view store context (shared components read from context)
+vi.mock("@/features/issues/stores/view-store-context", () => ({
+  ViewStoreProvider: ({ children }: { children: React.ReactNode }) => children,
+  useViewStore: (selector?: any) => (selector ? selector(mockViewState) : mockViewState),
+  useViewStoreApi: () => ({ getState: () => mockViewState, setState: vi.fn(), subscribe: vi.fn() }),
+}));
+
 // Mock issue config
 vi.mock("@/features/issues/config", () => ({
   ALL_STATUSES: ["backlog", "todo", "in_progress", "in_review", "done", "blocked", "cancelled"],
+  BOARD_STATUSES: ["backlog", "todo", "in_progress", "in_review", "done", "blocked"],
   STATUS_ORDER: ["backlog", "todo", "in_progress", "in_review", "done", "blocked", "cancelled"],
   STATUS_CONFIG: {
     backlog: { label: "Backlog", iconColor: "text-muted-foreground", hoverBg: "hover:bg-accent" },
