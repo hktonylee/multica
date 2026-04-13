@@ -639,13 +639,23 @@ func runIssueCommentList(cmd *cobra.Command, args []string) error {
 
 func runIssueCommentAdd(cmd *cobra.Command, args []string) error {
 	content, _ := cmd.Flags().GetString("content")
-	if useStdin, _ := cmd.Flags().GetBool("content-stdin"); useStdin {
+	useStdin, _ := cmd.Flags().GetBool("content-stdin")
+
+	if content != "" && useStdin {
+		return fmt.Errorf("--content and --content-stdin are mutually exclusive")
+	}
+
+	if useStdin {
 		data, err := io.ReadAll(os.Stdin)
 		if err != nil {
 			return fmt.Errorf("read stdin: %w", err)
 		}
-		content = strings.TrimRight(string(data), "\n")
+		content = strings.TrimSuffix(string(data), "\n")
+		if content == "" {
+			return fmt.Errorf("stdin content is empty")
+		}
 	}
+
 	if content == "" {
 		return fmt.Errorf("--content or --content-stdin is required")
 	}
