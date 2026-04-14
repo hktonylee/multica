@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -20,8 +22,13 @@ import (
 func main() {
 	logger.Init()
 
+	if err := validateSecurityConfig(); err != nil {
+		slog.Error("invalid security configuration", "error", err)
+		os.Exit(1)
+	}
+
 	// Warn about missing configuration
-	if os.Getenv("JWT_SECRET") == "" {
+	if strings.TrimSpace(os.Getenv("JWT_SECRET")) == "" {
 		slog.Warn("JWT_SECRET is not set — using insecure default. Set JWT_SECRET for production use.")
 	}
 	if os.Getenv("RESEND_API_KEY") == "" {
@@ -100,4 +107,17 @@ func main() {
 		os.Exit(1)
 	}
 	slog.Info("server stopped")
+}
+
+func validateSecurityConfig() error {
+	env := strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV")))
+	if env != "production" && env != "staging" {
+		return nil
+	}
+
+	if strings.TrimSpace(os.Getenv("JWT_SECRET")) == "" {
+		return fmt.Errorf("JWT_SECRET is required when APP_ENV=%q", env)
+	}
+
+	return nil
 }
