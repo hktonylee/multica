@@ -73,5 +73,9 @@
   }
   html {
     @apply font-sans;
+    /* Auto-insert 1/4em space between CJK ideographs and Latin letters/numerals.
+     * Native CSS text-autospace (Chrome 119+, Electron recent versions).
+     * Progressive enhancement: browsers that don't support it simply ignore the rule. */
+    text-autospace: ideograph-alpha ideograph-numeric;
   }
 }

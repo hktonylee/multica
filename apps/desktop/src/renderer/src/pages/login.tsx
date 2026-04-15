@@ -1,7 +1,7 @@
 import { LoginPage } from "@multica/views/auth";
 import { MulticaIcon } from "@multica/ui/components/common/multica-icon";
 
-const WEB_URL = import.meta.env.VITE_WEB_URL || "http://localhost:3000";
+const WEB_URL = import.meta.env.VITE_APP_URL || "http://localhost:3000";
 
 export function DesktopLoginPage() {
   const lastWorkspaceId = localStorage.getItem("multica_workspace_id");

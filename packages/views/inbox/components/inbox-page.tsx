@@ -44,6 +44,7 @@ import {
   DropdownMenuSeparator,
 } from "@multica/ui/components/ui/dropdown-menu";
 import { useIsMobile } from "@multica/ui/hooks/use-mobile";
+import { PageHeader } from "../../layout/page-header";
 import { InboxListItem, timeAgo } from "./inbox-list-item";
 import { typeLabels } from "./inbox-detail-label";
 
@@ -133,7 +134,7 @@ export function InboxPage() {
   // -- Shared sub-components --------------------------------------------------
 
   const listHeader = (
-    <div className="flex h-12 shrink-0 items-center justify-between border-b px-4">
+    <PageHeader className="justify-between">
       <div className="flex items-center gap-2">
         <h1 className="text-sm font-semibold">Inbox</h1>
         {unreadCount > 0 && (
@@ -147,7 +148,7 @@ export function InboxPage() {
           render={
             <Button
               variant="ghost"
-              size="icon-xs"
+              size="icon-sm"
               className="text-muted-foreground"
             />
           }
@@ -174,7 +175,7 @@ export function InboxPage() {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-    </div>
+    </PageHeader>
   );
 
   const listBody = items.length === 0 ? (

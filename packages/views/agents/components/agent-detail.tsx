@@ -12,8 +12,9 @@ import {
   MoreHorizontal,
   Settings,
   KeyRound,
+  Terminal,
 } from "lucide-react";
-import type { Agent, RuntimeDevice } from "@multica/core/types";
+import type { Agent, RuntimeDevice, MemberWithUser } from "@multica/core/types";
 import {
   Dialog,
   DialogContent,
@@ -36,30 +37,36 @@ import { SkillsTab } from "./tabs/skills-tab";
 import { TasksTab } from "./tabs/tasks-tab";
 import { SettingsTab } from "./tabs/settings-tab";
 import { EnvTab } from "./tabs/env-tab";
+import { CustomArgsTab } from "./tabs/custom-args-tab";
 
 function getRuntimeDevice(agent: Agent, runtimes: RuntimeDevice[]): RuntimeDevice | undefined {
   return runtimes.find((runtime) => runtime.id === agent.runtime_id);
 }
 
-type DetailTab = "instructions" | "skills" | "tasks" | "env" | "settings";
+type DetailTab = "instructions" | "skills" | "tasks" | "env" | "custom_args" | "settings";
 
 const detailTabs: { id: DetailTab; label: string; icon: typeof FileText }[] = [
   { id: "instructions", label: "Instructions", icon: FileText },
   { id: "skills", label: "Skills", icon: BookOpenText },
   { id: "tasks", label: "Tasks", icon: ListTodo },
   { id: "env", label: "Environment", icon: KeyRound },
+  { id: "custom_args", label: "Custom Args", icon: Terminal },
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
 export function AgentDetail({
   agent,
   runtimes,
+  members,
+  currentUserId,
   onUpdate,
   onArchive,
   onRestore,
 }: {
   agent: Agent;
   runtimes: RuntimeDevice[];
+  members: MemberWithUser[];
+  currentUserId: string | null;
   onUpdate: (id: string, data: Partial<Agent>) => Promise<void>;
   onArchive: (id: string) => Promise<void>;
   onRestore: (id: string) => Promise<void>;
@@ -164,6 +171,13 @@ export function AgentDetail({
         {activeTab === "env" && (
           <EnvTab
             agent={agent}
+            readOnly={agent.custom_env_redacted}
+            onSave={(updates) => onUpdate(agent.id, updates)}
+          />
+        )}
+        {activeTab === "custom_args" && (
+          <CustomArgsTab
+            agent={agent}
             onSave={(updates) => onUpdate(agent.id, updates)}
           />
         )}
@@ -171,6 +185,8 @@ export function AgentDetail({
           <SettingsTab
             agent={agent}
             runtimes={runtimes}
+            members={members}
+            currentUserId={currentUserId}
             onSave={(updates) => onUpdate(agent.id, updates)}
           />
         )}

@@ -248,6 +248,7 @@ export function SearchCommand() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent
+        finalFocus={false}
         className="top-[20%] translate-y-0 overflow-hidden rounded-xl! p-0 sm:max-w-xl!"
         showCloseButton={false}
       >

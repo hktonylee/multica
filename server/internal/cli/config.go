@@ -10,75 +10,12 @@ import (
 
 const defaultCLIConfigPath = ".multica/config.json"
 
-// WatchedWorkspace represents a workspace the daemon should monitor for tasks.
-type WatchedWorkspace struct {
-	ID   string `json:"id"`
-	Name string `json:"name,omitempty"`
-}
-
 // CLIConfig holds persistent CLI settings.
 type CLIConfig struct {
-	ServerURL         string             `json:"server_url,omitempty"`
-	AppURL            string             `json:"app_url,omitempty"`
-	WorkspaceID       string             `json:"workspace_id,omitempty"`
-	Token             string             `json:"token,omitempty"`
-	WatchedWorkspaces []WatchedWorkspace `json:"watched_workspaces,omitempty"`
-	// UnwatchedWorkspaces is a denylist of workspace IDs the user has
-	// explicitly opted out of. The daemon's periodic sync from the API
-	// respects this list and won't re-add excluded workspaces.
-	UnwatchedWorkspaces []string `json:"unwatched_workspaces,omitempty"`
-}
-
-// IsUnwatched reports whether the given workspace ID is in the denylist.
-func (c *CLIConfig) IsUnwatched(id string) bool {
-	for _, u := range c.UnwatchedWorkspaces {
-		if u == id {
-			return true
-		}
-	}
-	return false
-}
-
-// AddUnwatchedWorkspace adds an ID to the denylist. Returns true if added.
-func (c *CLIConfig) AddUnwatchedWorkspace(id string) bool {
-	if c.IsUnwatched(id) {
-		return false
-	}
-	c.UnwatchedWorkspaces = append(c.UnwatchedWorkspaces, id)
-	return true
-}
-
-// RemoveUnwatchedWorkspace removes an ID from the denylist. Returns true if removed.
-func (c *CLIConfig) RemoveUnwatchedWorkspace(id string) bool {
-	for i, u := range c.UnwatchedWorkspaces {
-		if u == id {
-			c.UnwatchedWorkspaces = append(c.UnwatchedWorkspaces[:i], c.UnwatchedWorkspaces[i+1:]...)
-			return true
-		}
-	}
-	return false
-}
-
-// AddWatchedWorkspace adds a workspace to the watch list. Returns true if added.
-func (c *CLIConfig) AddWatchedWorkspace(id, name string) bool {
-	for _, w := range c.WatchedWorkspaces {
-		if w.ID == id {
-			return false
-		}
-	}
-	c.WatchedWorkspaces = append(c.WatchedWorkspaces, WatchedWorkspace{ID: id, Name: name})
-	return true
-}
-
-// RemoveWatchedWorkspace removes a workspace from the watch list. Returns true if found.
-func (c *CLIConfig) RemoveWatchedWorkspace(id string) bool {
-	for i, w := range c.WatchedWorkspaces {
-		if w.ID == id {
-			c.WatchedWorkspaces = append(c.WatchedWorkspaces[:i], c.WatchedWorkspaces[i+1:]...)
-			return true
-		}
-	}
-	return false
+	ServerURL   string `json:"server_url,omitempty"`
+	AppURL      string `json:"app_url,omitempty"`
+	WorkspaceID string `json:"workspace_id,omitempty"`
+	Token       string `json:"token,omitempty"`
 }
 
 // CLIConfigPath returns the default path for the CLI config file.

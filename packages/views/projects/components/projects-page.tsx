@@ -37,6 +37,7 @@ import { ContentEditor, type ContentEditorRef } from "../../editor";
 import { TitleEditor } from "../../editor";
 import { EmojiPicker } from "@multica/ui/components/common/emoji-picker";
 import type { Project, ProjectStatus, ProjectPriority, UpdateProjectRequest } from "@multica/core/types";
+import { PageHeader } from "../../layout/page-header";
 import { PriorityIcon } from "../../issues/components/priority-icon";
 
 function formatRelativeDate(date: string): string {
@@ -539,7 +540,7 @@ export function ProjectsPage() {
   return (
     <div className="flex h-full flex-col">
       {/* Header bar */}
-      <div className="flex h-12 shrink-0 items-center justify-between border-b px-5">
+      <PageHeader className="justify-between px-5">
         <div className="flex items-center gap-2">
           <FolderKanban className="h-4 w-4 text-muted-foreground" />
           <h1 className="text-sm font-medium">Projects</h1>
@@ -551,7 +552,7 @@ export function ProjectsPage() {
           <Plus className="h-3.5 w-3.5 mr-1" />
           New project
         </Button>
-      </div>
+      </PageHeader>
 
       {/* Table */}
       <div className="flex-1 overflow-y-auto">

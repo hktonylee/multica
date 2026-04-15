@@ -50,14 +50,6 @@ const daemonAPI = {
     ipcRenderer.invoke("daemon:sync-token", token, userId),
   clearToken: (): Promise<void> =>
     ipcRenderer.invoke("daemon:clear-token"),
-  listWatched: (): Promise<{
-    watched: Array<{ id: string; name: string; runtime_count?: number }>;
-    unwatched: string[];
-  }> => ipcRenderer.invoke("daemon:list-watched"),
-  watchWorkspace: (id: string, name: string): Promise<void> =>
-    ipcRenderer.invoke("daemon:watch-workspace", id, name),
-  unwatchWorkspace: (id: string): Promise<void> =>
-    ipcRenderer.invoke("daemon:unwatch-workspace", id),
   isCliInstalled: (): Promise<boolean> =>
     ipcRenderer.invoke("daemon:is-cli-installed"),
   getPrefs: (): Promise<{ autoStart: boolean; autoStop: boolean }> =>

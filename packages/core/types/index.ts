@@ -34,3 +34,20 @@ export type { ChatSession, ChatMessage, ChatPendingTask, PendingChatTaskItem, Pe
 export type { StorageAdapter } from "./storage";
 export type { Project, ProjectStatus, ProjectPriority, CreateProjectRequest, UpdateProjectRequest, ListProjectsResponse } from "./project";
 export type { PinnedItem, PinnedItemType, CreatePinRequest, ReorderPinsRequest } from "./pin";
+export type {
+  Autopilot,
+  AutopilotStatus,
+  AutopilotExecutionMode,
+  AutopilotTrigger,
+  AutopilotTriggerKind,
+  AutopilotRun,
+  AutopilotRunStatus,
+  AutopilotRunSource,
+  CreateAutopilotRequest,
+  UpdateAutopilotRequest,
+  CreateAutopilotTriggerRequest,
+  UpdateAutopilotTriggerRequest,
+  ListAutopilotsResponse,
+  GetAutopilotResponse,
+  ListAutopilotRunsResponse,
+} from "./autopilot";

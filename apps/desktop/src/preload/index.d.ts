@@ -35,12 +35,6 @@ interface DaemonAPI {
   setTargetApiUrl: (url: string) => Promise<void>;
   syncToken: (token: string, userId: string) => Promise<void>;
   clearToken: () => Promise<void>;
-  listWatched: () => Promise<{
-    watched: Array<{ id: string; name: string; runtime_count?: number }>;
-    unwatched: string[];
-  }>;
-  watchWorkspace: (id: string, name: string) => Promise<void>;
-  unwatchWorkspace: (id: string) => Promise<void>;
   isCliInstalled: () => Promise<boolean>;
   getPrefs: () => Promise<DaemonPrefs>;
   setPrefs: (prefs: Partial<DaemonPrefs>) => Promise<DaemonPrefs>;

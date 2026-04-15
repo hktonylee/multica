@@ -517,6 +517,7 @@ func (s *TaskService) broadcastTaskEvent(ctx context.Context, eventType string, 
 
 // resolveTaskWorkspaceID determines the workspace ID for a task.
 // For issue tasks, it comes from the issue. For chat tasks, from the chat session.
+// For autopilot tasks, from the autopilot via its run.
 func (s *TaskService) resolveTaskWorkspaceID(ctx context.Context, task db.AgentTaskQueue) string {
 	if task.IssueID.Valid {
 		if issue, err := s.Queries.GetIssue(ctx, task.IssueID); err == nil {
@@ -526,6 +527,13 @@ func (s *TaskService) resolveTaskWorkspaceID(ctx context.Context, task db.AgentT
 	if task.ChatSessionID.Valid {
 		if cs, err := s.Queries.GetChatSession(ctx, task.ChatSessionID); err == nil {
 			return util.UUIDToString(cs.WorkspaceID)
+		}
+	}
+	if task.AutopilotRunID.Valid {
+		if run, err := s.Queries.GetAutopilotRun(ctx, task.AutopilotRunID); err == nil {
+			if ap, err := s.Queries.GetAutopilot(ctx, run.AutopilotID); err == nil {
+				return util.UUIDToString(ap.WorkspaceID)
+			}
 		}
 	}
 	return ""

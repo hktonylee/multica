@@ -7,11 +7,8 @@ import {
   ChevronDown,
   X,
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
-import { workspaceListOptions } from "@multica/core/workspace";
 import { cn } from "@multica/ui/lib/utils";
 import { Button } from "@multica/ui/components/ui/button";
-import { Checkbox } from "@multica/ui/components/ui/checkbox";
 import { toast } from "sonner";
 import {
   Sheet,
@@ -68,46 +65,6 @@ export function DaemonPanel({ open, onOpenChange, status }: DaemonPanelProps) {
   const [autoScroll, setAutoScroll] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const logContainerRef = useRef<HTMLDivElement>(null);
-
-  // Watched workspaces — populated from the daemon when the panel opens and
-  // refreshed after every toggle so the checkbox state reflects reality.
-  const { data: allWorkspaces } = useQuery({
-    ...workspaceListOptions(),
-    enabled: open,
-  });
-  const [watchedIds, setWatchedIds] = useState<Set<string>>(new Set());
-  const [togglingId, setTogglingId] = useState<string | null>(null);
-
-  const refreshWatched = useCallback(async () => {
-    const state = await window.daemonAPI.listWatched().catch(() => null);
-    if (state) setWatchedIds(new Set(state.watched.map((w) => w.id)));
-  }, []);
-
-  useEffect(() => {
-    if (open && status.state === "running") void refreshWatched();
-  }, [open, status.state, refreshWatched]);
-
-  const handleToggleWatch = useCallback(
-    async (id: string, name: string, nextChecked: boolean) => {
-      setTogglingId(id);
-      try {
-        if (nextChecked) {
-          await window.daemonAPI.watchWorkspace(id, name);
-        } else {
-          await window.daemonAPI.unwatchWorkspace(id);
-        }
-        await refreshWatched();
-      } catch (err) {
-        toast.error(
-          nextChecked ? "Failed to watch workspace" : "Failed to unwatch workspace",
-          { description: err instanceof Error ? err.message : String(err) },
-        );
-      } finally {
-        setTogglingId(null);
-      }
-    },
-    [refreshWatched],
-  );
 
   useEffect(() => {
     if (!open) return;
@@ -304,38 +261,6 @@ export function DaemonPanel({ open, onOpenChange, status }: DaemonPanelProps) {
             </div>
           )}
 
-          {/* Watched workspaces */}
-          {status.state === "running" && allWorkspaces && allWorkspaces.length > 0 && (
-            <div className="space-y-2">
-              <h3 className="text-sm font-medium">Watched Workspaces</h3>
-              <div className="rounded-lg border divide-y max-h-48 overflow-y-auto">
-                {allWorkspaces.map((ws) => {
-                  const checked = watchedIds.has(ws.id);
-                  const disabled = togglingId === ws.id;
-                  return (
-                    <label
-                      key={ws.id}
-                      className={cn(
-                        "flex items-center gap-2.5 px-3 py-2",
-                        disabled
-                          ? "opacity-60 cursor-wait"
-                          : "cursor-pointer hover:bg-muted/40",
-                      )}
-                    >
-                      <Checkbox
-                        checked={checked}
-                        disabled={disabled}
-                        onCheckedChange={(next) =>
-                          handleToggleWatch(ws.id, ws.name, next === true)
-                        }
-                      />
-                      <span className="truncate text-sm">{ws.name}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-          )}
           </div>
 
           {/* Logs — fills remaining vertical space down to the sheet bottom */}

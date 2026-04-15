@@ -17,13 +17,15 @@ import { useAuthStore } from "@multica/core/auth";
 import { runtimeListOptions } from "@multica/core/runtimes/queries";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useWorkspaceId } from "@multica/core/hooks";
-import { agentListOptions, workspaceKeys } from "@multica/core/workspace/queries";
+import { agentListOptions, memberListOptions, workspaceKeys } from "@multica/core/workspace/queries";
+import { PageHeader } from "../../layout/page-header";
 import { CreateAgentDialog } from "./create-agent-dialog";
 import { AgentListItem } from "./agent-list-item";
 import { AgentDetail } from "./agent-detail";
 
 export function AgentsPage() {
   const isLoading = useAuthStore((s) => s.isLoading);
+  const currentUser = useAuthStore((s) => s.user);
   const qc = useQueryClient();
   const wsId = useWorkspaceId();
   const { data: agents = [] } = useQuery(agentListOptions(wsId));
@@ -31,6 +33,7 @@ export function AgentsPage() {
   const [showArchived, setShowArchived] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const { data: runtimes = [], isLoading: runtimesLoading } = useQuery(runtimeListOptions(wsId));
+  const { data: members = [] } = useQuery(memberListOptions(wsId));
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({
     id: "multica_agents_layout",
   });
@@ -138,28 +141,28 @@ export function AgentsPage() {
       <ResizablePanel id="list" defaultSize={280} minSize={240} maxSize={400} groupResizeBehavior="preserve-pixel-size">
         {/* Left column — agent list */}
         <div className="overflow-y-auto h-full border-r">
-          <div className="flex h-12 items-center justify-between border-b px-4">
+          <PageHeader className="justify-between">
             <h1 className="text-sm font-semibold">Agents</h1>
             <div className="flex items-center gap-1">
               {archivedCount > 0 && (
                 <Button
                   variant={showArchived ? "secondary" : "ghost"}
-                  size="icon-xs"
+                  size="icon-sm"
                   onClick={() => setShowArchived(!showArchived)}
                   title={showArchived ? "Show active agents" : "Show archived agents"}
                 >
-                  <Archive className="h-4 w-4 text-muted-foreground" />
+                  <Archive className="text-muted-foreground" />
                 </Button>
               )}
               <Button
                 variant="ghost"
-                size="icon-xs"
+                size="icon-sm"
                 onClick={() => setShowCreate(true)}
               >
-                <Plus className="h-4 w-4 text-muted-foreground" />
+                <Plus className="text-muted-foreground" />
               </Button>
             </div>
-          </div>
+          </PageHeader>
           {filteredAgents.length === 0 ? (
             <div className="flex flex-col items-center justify-center px-4 py-12">
               <Bot className="h-8 w-8 text-muted-foreground/40" />
@@ -201,6 +204,8 @@ export function AgentsPage() {
             key={selected.id}
             agent={selected}
             runtimes={runtimes}
+            members={members}
+            currentUserId={currentUser?.id ?? null}
             onUpdate={handleUpdate}
             onArchive={handleArchive}
             onRestore={handleRestore}
@@ -225,6 +230,8 @@ export function AgentsPage() {
         <CreateAgentDialog
           runtimes={runtimes}
           runtimesLoading={runtimesLoading}
+          members={members}
+          currentUserId={currentUser?.id ?? null}
           onClose={() => setShowCreate(false)}
           onCreate={handleCreate}
         />

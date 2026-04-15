@@ -78,6 +78,13 @@ const (
 	EventInvitationDeclined = "invitation:declined"
 	EventInvitationRevoked  = "invitation:revoked"
 
+	// Autopilot events
+	EventAutopilotCreated  = "autopilot:created"
+	EventAutopilotUpdated  = "autopilot:updated"
+	EventAutopilotDeleted  = "autopilot:deleted"
+	EventAutopilotRunStart = "autopilot:run_start"
+	EventAutopilotRunDone  = "autopilot:run_done"
+
 	// Daemon events
 	EventDaemonHeartbeat = "daemon:heartbeat"
 	EventDaemonRegister  = "daemon:register"

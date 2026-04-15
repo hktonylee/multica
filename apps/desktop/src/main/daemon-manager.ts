@@ -18,6 +18,7 @@ import { join } from "path";
 import { homedir } from "os";
 import type { DaemonStatus, DaemonPrefs } from "../shared/daemon-types";
 import { ensureManagedCli, managedCliPath } from "./cli-bootstrap";
+import { decideVersionAction } from "./version-decision";
 
 const DEFAULT_HEALTH_PORT = 19514;
 const POLL_INTERVAL_MS = 5_000;
@@ -39,6 +40,11 @@ let getMainWindow: () => BrowserWindow | null = () => null;
 let operationInProgress = false;
 let cachedCliBinary: string | null | undefined = undefined;
 let cliResolvePromise: Promise<string | null> | null = null;
+let cachedCliBinaryVersion: string | null | undefined = undefined;
+// Set when a CLI version mismatch was detected but the running daemon is
+// busy executing tasks. The poll loop retries the check on each tick and
+// fires the restart once active_task_count drops to 0.
+let pendingVersionRestart = false;
 let targetApiBaseUrl: string | null = null;
 let activeProfile: ActiveProfile | null = null;
 
@@ -132,6 +138,8 @@ interface HealthPayload {
   daemon_id?: string;
   device_name?: string;
   server_url?: string;
+  cli_version?: string;
+  active_task_count?: number;
   agents?: string[];
   workspaces?: unknown[];
 }
@@ -362,6 +370,91 @@ async function resolveCliBinary(): Promise<string | null> {
 }
 
 /**
+ * Reads the version of the currently resolved CLI binary by invoking
+ * `multica version --output json`. Cached for the process lifetime — the
+ * bundled binary doesn't change after `bundle-cli.mjs` runs at dev/build time.
+ * Returns null on any failure (unknown `go` at bundle time, broken binary,
+ * etc.) so callers can fail open.
+ */
+async function getCliBinaryVersion(): Promise<string | null> {
+  if (cachedCliBinaryVersion !== undefined) return cachedCliBinaryVersion;
+  const bin = await resolveCliBinary();
+  if (!bin) {
+    cachedCliBinaryVersion = null;
+    return null;
+  }
+  try {
+    const stdout = await new Promise<string>((resolve, reject) => {
+      execFile(
+        bin,
+        ["version", "--output", "json"],
+        { timeout: 5_000 },
+        (err, out) => {
+          if (err) reject(err);
+          else resolve(out);
+        },
+      );
+    });
+    const parsed = JSON.parse(stdout) as { version?: string };
+    cachedCliBinaryVersion = parsed.version ?? null;
+  } catch (err) {
+    console.warn("[daemon] failed to read CLI binary version:", err);
+    cachedCliBinaryVersion = null;
+  }
+  return cachedCliBinaryVersion;
+}
+
+/**
+ * Compares the running daemon's `cli_version` against the CLI binary we
+ * would use to spawn a new one, and restarts only when safe. The decision
+ * logic itself is in `version-decision.ts` (pure, unit-tested); this
+ * wrapper handles the async plumbing and side effects.
+ *
+ * Restart is only fired when ALL of:
+ *   - a daemon is actually running on the active profile's port
+ *   - both sides report a version and the strings differ
+ *   - `active_task_count` is 0 (no in-flight agent work would be killed)
+ *
+ * On a confirmed mismatch while the daemon is busy, `pendingVersionRestart`
+ * is set; the poll loop retries this function on each 5s tick and will fire
+ * the restart as soon as the daemon drains.
+ */
+async function ensureRunningDaemonVersionMatches(): Promise<
+  "restarted" | "deferred" | "ok" | "not_running"
+> {
+  const active = await ensureActiveProfile();
+  const running = await fetchHealthAtPort(active.port);
+  const bundled = await getCliBinaryVersion();
+  const action = decideVersionAction(bundled, running);
+
+  switch (action) {
+    case "not_running":
+      pendingVersionRestart = false;
+      return "not_running";
+    case "ok":
+      pendingVersionRestart = false;
+      return "ok";
+    case "defer": {
+      if (!pendingVersionRestart) {
+        const activeTasks = running?.active_task_count ?? 0;
+        console.log(
+          `[daemon] CLI version mismatch (bundled=${bundled} running=${running?.cli_version}); deferring restart until ${activeTasks} active task(s) finish`,
+        );
+      }
+      pendingVersionRestart = true;
+      return "deferred";
+    }
+    case "restart":
+      console.log(
+        `[daemon] CLI version mismatch (bundled=${bundled} running=${running?.cli_version}) — restarting daemon`,
+      );
+      pendingVersionRestart = false;
+      await restartDaemon();
+      return "restarted";
+  }
+}
+
+/**
  * Exchange the user's JWT for a long-lived PAT via POST /api/tokens. The
  * daemon needs a PAT (or `mul_` / `mdt_` token) because JWTs expire in 30
  * days and signatures are tied to a specific backend instance.
@@ -487,79 +580,6 @@ async function clearToken(): Promise<void> {
   await removeProfileUserId(active.name);
 }
 
-interface WatchedWorkspace {
-  id: string;
-  name: string;
-  runtime_count?: number;
-}
-
-interface WatchListResponse {
-  watched: WatchedWorkspace[];
-  unwatched: string[];
-}
-
-async function daemonFetch(
-  path: string,
-  init?: RequestInit,
-): Promise<Response> {
-  const active = await ensureActiveProfile();
-  const url = `http://127.0.0.1:${active.port}${path}`;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10_000);
-  try {
-    return await fetch(url, { ...init, signal: controller.signal });
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-async function listWatchedWorkspaces(): Promise<WatchListResponse> {
-  const empty: WatchListResponse = { watched: [], unwatched: [] };
-  try {
-    const res = await daemonFetch("/watch");
-    if (!res.ok) {
-      // Older daemon versions don't have /watch. Treat as "nothing watched
-      // yet" so the UI renders cleanly; the user can take manual action.
-      if (res.status === 404) return empty;
-      throw new Error(`list /watch failed: ${res.status} ${res.statusText}`);
-    }
-    const data = (await res.json()) as WatchListResponse;
-    return {
-      watched: Array.isArray(data.watched) ? data.watched : [],
-      unwatched: Array.isArray(data.unwatched) ? data.unwatched : [],
-    };
-  } catch (err) {
-    // Network errors (ECONNREFUSED when daemon is still starting, etc.) are
-    // expected during startup races — return empty instead of throwing so
-    // we don't spam the main-process error log on every poll.
-    const msg = err instanceof Error ? err.message : String(err);
-    console.log(`[daemon] list /watch unreachable: ${msg}`);
-    return empty;
-  }
-}
-
-async function watchWorkspace(id: string, name: string): Promise<void> {
-  const res = await daemonFetch("/watch", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ workspace_id: id, name }),
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`watch failed: ${res.status} ${body}`);
-  }
-}
-
-async function unwatchWorkspace(id: string): Promise<void> {
-  const res = await daemonFetch(`/watch/${encodeURIComponent(id)}`, {
-    method: "DELETE",
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`unwatch failed: ${res.status} ${body}`);
-  }
-}
-
 async function withGuard<T>(fn: () => Promise<T>): Promise<T | { success: false; error: string }> {
   if (operationInProgress) {
     return { success: false, error: "Another daemon operation is in progress" };
@@ -578,11 +598,12 @@ function profileArgs(active: ActiveProfile): string[] {
 
 // Env passed to every CLI child so the daemon process knows it was spawned
 // by the Desktop app. The server uses this to mark runtimes as managed and
-// hide CLI self-update UI.
-const DESKTOP_SPAWN_ENV = {
-  ...process.env,
-  MULTICA_LAUNCHED_BY: "desktop",
-};
+// hide CLI self-update UI. Computed lazily so it picks up the PATH fix
+// applied by fix-path in main/index.ts — as a top-level const it would
+// snapshot process.env at import time, before that block runs.
+function desktopSpawnEnv(): NodeJS.ProcessEnv {
+  return { ...process.env, MULTICA_LAUNCHED_BY: "desktop" };
+}
 
 async function startDaemon(): Promise<{ success: boolean; error?: string }> {
   const bin = await resolveCliBinary();
@@ -604,7 +625,7 @@ async function startDaemon(): Promise<{ success: boolean; error?: string }> {
     execFile(
       bin,
       args,
-      { timeout: 20_000, env: DESKTOP_SPAWN_ENV },
+      { timeout: 20_000, env: desktopSpawnEnv() },
       (err) => {
         if (err) {
           currentState = "stopped";
@@ -655,6 +676,10 @@ async function pollOnce(): Promise<void> {
   const status = await fetchHealth();
   currentState = status.state;
   sendStatus(status);
+  // Retry a deferred version-mismatch restart once the daemon drains.
+  if (pendingVersionRestart && status.state === "running") {
+    void ensureRunningDaemonVersionMatches();
+  }
 }
 
 function startPolling(): void {
@@ -804,14 +829,6 @@ export function setupDaemonManager(
     (_event, token: string, userId: string) => syncToken(token, userId),
   );
   ipcMain.handle("daemon:clear-token", () => clearToken());
-  ipcMain.handle("daemon:list-watched", () => listWatchedWorkspaces());
-  ipcMain.handle(
-    "daemon:watch-workspace",
-    (_event, id: string, name: string) => watchWorkspace(id, name),
-  );
-  ipcMain.handle("daemon:unwatch-workspace", (_event, id: string) =>
-    unwatchWorkspace(id),
-  );
   ipcMain.handle("daemon:is-cli-installed", async () => {
     const bin = await resolveCliBinary();
     return bin !== null;
@@ -819,6 +836,9 @@ export function setupDaemonManager(
   ipcMain.handle("daemon:retry-install", async () => {
     cachedCliBinary = undefined;
     cliResolvePromise = null;
+    // A retry-install may land a new CLI at a different version; drop the
+    // cached version string so the next check re-reads the binary.
+    cachedCliBinaryVersion = undefined;
     await bootstrapCli();
   });
   ipcMain.handle("daemon:get-prefs", () => loadPrefs());
@@ -836,7 +856,12 @@ export function setupDaemonManager(
     const bin = await resolveCliBinary();
     if (!bin) return;
     const health = await fetchHealth();
-    if (health.state === "running") return;
+    if (health.state === "running") {
+      // Daemon is up but may be running an older CLI than the one we just
+      // bundled. Restart it so the new binary actually takes effect.
+      await ensureRunningDaemonVersionMatches();
+      return;
+    }
     await startDaemon();
   });
 

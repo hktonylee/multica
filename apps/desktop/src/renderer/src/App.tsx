@@ -1,8 +1,7 @@
-import { useEffect, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { CoreProvider } from "@multica/core/platform";
 import { useAuthStore } from "@multica/core/auth";
-import { useWorkspaceStore, workspaceListOptions } from "@multica/core/workspace";
+import { useWorkspaceStore } from "@multica/core/workspace";
 import { api } from "@multica/core/api";
 import { ThemeProvider } from "@multica/ui/components/common/theme-provider";
 import { MulticaIcon } from "@multica/ui/components/common/multica-icon";
@@ -14,7 +13,14 @@ import { UpdateNotification } from "./components/update-notification";
 function AppContent() {
   const user = useAuthStore((s) => s.user);
   const isLoading = useAuthStore((s) => s.isLoading);
-  const [daemonRunning, setDaemonRunning] = useState(false);
+  // Deep-link login runs loginWithToken → syncToken → listWorkspaces →
+  // hydrateWorkspace sequentially. loginWithToken sets user+isLoading=false
+  // as soon as getMe resolves, which would cause DesktopShell to mount
+  // before the workspace list is hydrated and briefly see `!workspace`.
+  // This local flag keeps the loading screen up until the whole chain
+  // finishes, so the shell's "needs onboarding?" check gets a definitive
+  // workspace state on first render.
+  const [bootstrapping, setBootstrapping] = useState(false);
 
   // Tell the main process which backend URL we talk to, so daemon-manager
   // can pick the matching CLI profile (server_url from ~/.multica config).
@@ -22,30 +28,21 @@ function AppContent() {
     window.daemonAPI.setTargetApiUrl(DAEMON_TARGET_API_URL);
   }, []);
 
-  // Track daemon lifecycle so workspace reconciliation only runs when the
-  // daemon is actually listening — avoids a startup race where the reconcile
-  // effect fires before autoStart has spawned the child process.
-  useEffect(() => {
-    const unsub = window.daemonAPI.onStatusChange((s) => {
-      setDaemonRunning(s.state === "running");
-    });
-    window.daemonAPI.getStatus().then((s) => {
-      setDaemonRunning(s.state === "running");
-    });
-    return unsub;
-  }, []);
-
-  // Listen for auth token delivered via deep link (multica://auth/callback?token=...)
+  // Listen for auth token delivered via deep link (multica://auth/callback?token=...).
+  // daemonAPI.syncToken is handled separately by the [user] effect below, which
+  // fires whenever a user logs in (deep link, session restore, account switch).
   useEffect(() => {
     return window.desktopAPI.onAuthToken(async (token) => {
+      setBootstrapping(true);
       try {
-        const loggedIn = await useAuthStore.getState().loginWithToken(token);
-        await window.daemonAPI.syncToken(token, loggedIn.id);
+        await useAuthStore.getState().loginWithToken(token);
         const wsList = await api.listWorkspaces();
         const lastWsId = localStorage.getItem("multica_workspace_id");
         useWorkspaceStore.getState().hydrateWorkspace(wsList, lastWsId);
       } catch {
         // Token invalid or expired — user stays on login page
+      } finally {
+        setBootstrapping(false);
       }
     });
   }, []);
@@ -66,49 +63,7 @@ function AppContent() {
     })();
   }, [user]);
 
-  // Reconcile the daemon's watched workspaces with what the user is a member
-  // of. The query already hydrates on login and invalidates on create/delete
-  // mutations, so this one effect covers both initial sync and incremental
-  // updates. Opt-outs (unwatched denylist) are respected.
-  const { data: workspaces } = useQuery({
-    ...workspaceListOptions(),
-    enabled: !!user,
-  });
-  const lastSyncedIds = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    if (!user || !workspaces || !daemonRunning) return;
-    (async () => {
-      const state = await window.daemonAPI.listWatched().catch(() => null);
-      if (!state) return;
-      const watchedIds = new Set(state.watched.map((w) => w.id));
-      const unwatchedIds = new Set(state.unwatched);
-      const currentIds = new Set(workspaces.map((w) => w.id));
-
-      // Add: anything in the API list but not yet watched (and not opted out).
-      for (const ws of workspaces) {
-        if (watchedIds.has(ws.id) || unwatchedIds.has(ws.id)) continue;
-        try {
-          await window.daemonAPI.watchWorkspace(ws.id, ws.name);
-        } catch (err) {
-          console.warn("watch workspace failed", ws.id, err);
-        }
-      }
-      // Remove: anything we previously synced that is no longer in the API
-      // list (the user left or deleted it).
-      for (const prevId of lastSyncedIds.current) {
-        if (!currentIds.has(prevId)) {
-          try {
-            await window.daemonAPI.unwatchWorkspace(prevId);
-          } catch (err) {
-            console.warn("unwatch workspace failed", prevId, err);
-          }
-        }
-      }
-      lastSyncedIds.current = currentIds;
-    })();
-  }, [user, workspaces, daemonRunning]);
-
-  if (isLoading) {
+  if (isLoading || bootstrapping) {
     return (
       <div className="flex h-screen items-center justify-center">
         <MulticaIcon className="size-6 animate-pulse" />
