@@ -21,5 +21,4 @@ COPY --from=builder /out/multica /usr/local/bin/multica
 # Daemon local health endpoint.
 EXPOSE 19514
 
-ENTRYPOINT ["/usr/local/bin/multica"]
-CMD ["daemon", "start", "--foreground"]
+ENTRYPOINT ["/bin/bash"]

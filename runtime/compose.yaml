@@ -9,4 +9,4 @@ services:
       - ../var/.codex:/root/.codex
     ports:
       - "19514:19514"
-    command: ["daemon", "start", "--foreground"]
+    command: ["-lc", "multica daemon start --foreground"]
