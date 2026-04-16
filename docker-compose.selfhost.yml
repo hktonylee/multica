@@ -4,6 +4,8 @@
 #   cp .env.example .env
 #   # Edit .env — change JWT_SECRET at minimum
 #   docker compose -f docker-compose.selfhost.yml up -d
+#   # Optional: enable Traefik reverse proxy (app.localhost + api.localhost)
+#   docker compose -f docker-compose.selfhost.yml --profile traefik up -d
 #
 # Frontend: http://localhost:3000
 # Backend:  http://localhost:8080 (also used by CLI/daemon)
@@ -11,6 +13,24 @@
 name: multica
 
 services:
+  traefik:
+    image: traefik:v3.2
+    profiles:
+      - traefik
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --api.dashboard=true
+      - --api.insecure=true
+    ports:
+      - "${TRAEFIK_HTTP_PORT:-80}:80"
+      - "${TRAEFIK_HTTPS_PORT:-443}:443"
+      - "${TRAEFIK_DASHBOARD_PORT:-8081}:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
   postgres:
     image: pgvector/pgvector:pg17
     environment:
@@ -56,6 +76,11 @@ services:
       CLOUDFRONT_PRIVATE_KEY: ${CLOUDFRONT_PRIVATE_KEY:-}
       COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
       MULTICA_APP_URL: ${MULTICA_APP_URL:-http://localhost:3000}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.multica-api.rule=Host(`${TRAEFIK_API_HOST:-api.localhost}`)"
+      - "traefik.http.routers.multica-api.entrypoints=web"
+      - "traefik.http.services.multica-api.loadbalancer.server.port=8080"
 
   frontend:
     build:
@@ -71,6 +96,11 @@ services:
       - "${FRONTEND_PORT:-3000}:3000"
     environment:
       HOSTNAME: "0.0.0.0"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.multica-web.rule=Host(`${TRAEFIK_WEB_HOST:-app.localhost}`)"
+      - "traefik.http.routers.multica-web.entrypoints=web"
+      - "traefik.http.services.multica-web.loadbalancer.server.port=3000"
 
 volumes:
   pgdata:

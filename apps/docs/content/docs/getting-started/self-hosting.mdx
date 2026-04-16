@@ -315,6 +315,31 @@ api.example.com {
 }
 ```
 
+### Traefik (Docker Compose profile)
+
+The self-host compose file includes an optional Traefik service and router labels.
+
+```bash
+# Start stack with Traefik enabled
+docker compose -f docker-compose.selfhost.yml --profile traefik up -d --build
+```
+
+Default hostnames:
+
+- Frontend: `http://app.localhost`
+- Backend: `http://api.localhost`
+- Traefik dashboard: `http://localhost:8081`
+
+You can override hostnames/ports in `.env`:
+
+```bash
+TRAEFIK_WEB_HOST=app.example.com
+TRAEFIK_API_HOST=api.example.com
+TRAEFIK_HTTP_PORT=80
+TRAEFIK_HTTPS_PORT=443
+TRAEFIK_DASHBOARD_PORT=8081
+```
+
 ### Nginx
 
 ```nginx
