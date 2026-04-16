@@ -2,8 +2,8 @@ services:
   runtime:
     build:
       context: ..
-      dockerfile: cli/Dockerfile
-    image: multica-cli-runtime:local
+      dockerfile: runtime/Dockerfile
+    image: multica-runtime:local
     volumes:
       - ../var/.multica:/root/.multica
       - ../var/.codex:/root/.codex

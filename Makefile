@@ -53,9 +53,9 @@ selfhost:
 	fi
 	@echo "==> Starting Multica via Docker Compose..."
 	docker compose -f docker-compose.selfhost.yml up -d --build
-	@echo "==> Starting CLI runtime container..."
+	@echo "==> Starting runtime container..."
 	@mkdir -p var/.multica var/.codex
-	docker compose -f cli/compose.yaml up -d --build runtime
+	docker compose -f runtime/compose.yaml up -d --build runtime
 	@echo "==> Waiting for backend to be ready..."
 	@for i in $$(seq 1 30); do \
 		if curl -sf http://localhost:$${PORT:-8080}/health > /dev/null 2>&1; then \
@@ -83,7 +83,7 @@ selfhost:
 # Stop all Docker Compose self-host services
 selfhost-stop:
 	@echo "==> Stopping Multica services..."
-	docker compose -f cli/compose.yaml down
+	docker compose -f runtime/compose.yaml down
 	docker compose -f docker-compose.selfhost.yml down
 	@echo "✓ All services stopped."
 
@@ -110,9 +110,9 @@ start:
 	@bash scripts/ensure-postgres.sh "$(ENV_FILE)"
 	@echo "Running migrations..."
 	cd server && go run ./cmd/migrate up
-	@echo "Starting CLI runtime container..."
+	@echo "Starting runtime container..."
 	@mkdir -p var/.multica var/.codex
-	@docker compose -f cli/compose.yaml up -d --build runtime
+	@docker compose -f runtime/compose.yaml up -d --build runtime
 	@echo "Starting backend and frontend..."
 	@trap 'kill 0' EXIT; \
 		(cd server && go run ./cmd/server) & \
@@ -123,7 +123,7 @@ start:
 stop:
 	$(REQUIRE_ENV)
 	@echo "Stopping services..."
-	@docker compose -f cli/compose.yaml down
+	@docker compose -f runtime/compose.yaml down
 	@-lsof -ti:$(PORT) | xargs kill -9 2>/dev/null
 	@-lsof -ti:$(FRONTEND_PORT) | xargs kill -9 2>/dev/null
 	@case "$(DATABASE_URL)" in \
