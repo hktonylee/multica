@@ -18,9 +18,6 @@ WORKDIR /work
 
 COPY --from=builder /out/multica /usr/local/bin/multica
 
-# Persist CLI/runtime credentials and local Codex state when mounting host directories.
-VOLUME ["/root/.multica", "/root/.codex"]
-
 # Daemon local health endpoint.
 EXPOSE 19514
 
