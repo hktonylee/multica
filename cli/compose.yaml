@@ -1,0 +1,12 @@
+services:
+  runtime:
+    build:
+      context: ..
+      dockerfile: cli/Dockerfile
+    image: multica-cli-runtime:local
+    volumes:
+      - ../var/.multica:/root/.multica
+      - ../var/.codex:/root/.codex
+    ports:
+      - "19514:19514"
+    command: ["daemon", "start", "--foreground"]
