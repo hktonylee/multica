@@ -2,13 +2,35 @@
 
 FROM ubuntu:24.04
 
+ARG RUNTIME_UID=1000
+ARG RUNTIME_GID=1000
+ARG RUNTIME_USER=ubuntu
+
 ENV DEBIAN_FRONTEND=noninteractive
+ENV HOME=/home/${RUNTIME_USER}
 
 RUN mkdir -p /apt \
 	&& apt-get update \
 	&& apt-get install -y --no-install-recommends ca-certificates bash git openssh-client curl \
 	&& rm -rf /var/cache/apt/archives/*.deb
 
-COPY runtime/apt-packages.txt /tmp/apt-packages.txt
+RUN if getent group "${RUNTIME_USER}" >/dev/null; then \
+		groupmod --gid "${RUNTIME_GID}" "${RUNTIME_USER}"; \
+	else \
+		groupadd --gid "${RUNTIME_GID}" "${RUNTIME_USER}"; \
+	fi \
+	&& if id -u "${RUNTIME_USER}" >/dev/null 2>&1; then \
+		usermod --uid "${RUNTIME_UID}" --gid "${RUNTIME_GID}" --home "/home/${RUNTIME_USER}" --shell /bin/bash "${RUNTIME_USER}"; \
+	else \
+		useradd --uid "${RUNTIME_UID}" --gid "${RUNTIME_GID}" --create-home --shell /bin/bash "${RUNTIME_USER}"; \
+	fi \
+	&& mkdir -p "/home/${RUNTIME_USER}" /tmp/apt-state/lists/partial /tmp/apt-cache/archives/partial \
+	&& chown -R "${RUNTIME_UID}:${RUNTIME_GID}" "/home/${RUNTIME_USER}" /tmp/apt-state /tmp/apt-cache /var/cache/apt/archives
 
-CMD ["sh", "-ec", "mkdir -p /apt/partial && missing=0; while IFS= read -r package; do [ -z \"$package\" ] && continue; if ! find /apt -maxdepth 1 -type f -name \"${package}_*.deb\" | grep -q .; then missing=1; break; fi; done < /tmp/apt-packages.txt; if [ \"$missing\" -eq 1 ]; then apt-get update && xargs apt-get install -y --download-only --no-install-recommends -o Dir::Cache::archives=/apt < /tmp/apt-packages.txt; fi; find /apt -maxdepth 1 -type f -name '*.deb' -printf '%f\\n' | sort"]
+COPY runtime/apt-packages.txt /tmp/apt-packages.txt
+COPY runtime/apt-download.sh /usr/local/bin/apt-download
+RUN chmod +x /usr/local/bin/apt-download
+
+USER ${RUNTIME_UID}:${RUNTIME_GID}
+
+CMD ["/usr/local/bin/apt-download"]

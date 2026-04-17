@@ -3,7 +3,14 @@ services:
     build:
       context: ..
       dockerfile: runtime/Dockerfile.apt
+      args:
+        RUNTIME_UID: ${RUNTIME_UID:-1000}
+        RUNTIME_GID: ${RUNTIME_GID:-1000}
+        RUNTIME_USER: ${RUNTIME_USER:-ubuntu}
     image: multica-runtime-apt-downloader:local
+    user: "${RUNTIME_UID:-1000}:${RUNTIME_GID:-1000}"
+    environment:
+      HOME: /home/${RUNTIME_USER:-ubuntu}
     volumes:
       - ../var/apt:/apt
 

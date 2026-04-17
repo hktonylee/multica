@@ -3,9 +3,20 @@ set -eu
 
 marker=/var/lib/multica-runtime/apt-installed
 
+install_matching() {
+	for pattern in "$@"; do
+		for deb in /apt/$pattern; do
+			[ -e "$deb" ] || continue
+			DEBIAN_FRONTEND=noninteractive dpkg -i "$deb"
+		done
+	done
+}
+
 if [ ! -f "$marker" ] && ls /apt/*.deb >/dev/null 2>&1; then
 	mkdir -p "$(dirname "$marker")"
-	DEBIAN_FRONTEND=noninteractive dpkg -i /apt/*.deb
+	install_matching 'libpython3.*-minimal_*.deb' 'python3.*-minimal_*.deb' 'python3-minimal_*.deb'
+	DEBIAN_FRONTEND=noninteractive dpkg -i /apt/*.deb || DEBIAN_FRONTEND=noninteractive dpkg --configure -a
+	DEBIAN_FRONTEND=noninteractive dpkg --configure -a
 	touch "$marker"
 fi
 
