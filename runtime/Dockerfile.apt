@@ -11,4 +11,4 @@ RUN mkdir -p /apt \
 
 COPY runtime/apt-packages.txt /tmp/apt-packages.txt
 
-CMD ["sh", "-ec", "apt-get update && mkdir -p /apt/partial && xargs apt-get install -y --download-only --no-install-recommends -o Dir::Cache::archives=/apt < /tmp/apt-packages.txt && find /apt -maxdepth 1 -type f -name '*.deb' -printf '%f\\n' | sort"]
+CMD ["sh", "-ec", "mkdir -p /apt/partial && missing=0; while IFS= read -r package; do [ -z \"$package\" ] && continue; if ! find /apt -maxdepth 1 -type f -name \"${package}_*.deb\" | grep -q .; then missing=1; break; fi; done < /tmp/apt-packages.txt; if [ \"$missing\" -eq 1 ]; then apt-get update && xargs apt-get install -y --download-only --no-install-recommends -o Dir::Cache::archives=/apt < /tmp/apt-packages.txt; fi; find /apt -maxdepth 1 -type f -name '*.deb' -printf '%f\\n' | sort"]
