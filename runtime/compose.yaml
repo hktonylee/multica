@@ -1,12 +1,37 @@
 services:
+  apt-downloader:
+    build:
+      context: ..
+      dockerfile: runtime/Dockerfile.apt
+    image: multica-runtime-apt-downloader:local
+    volumes:
+      - ../var/apt:/apt
+
   runtime:
     build:
       context: ..
       dockerfile: runtime/Dockerfile
+      args:
+        RUNTIME_UID: ${RUNTIME_UID:-1000}
+        RUNTIME_GID: ${RUNTIME_GID:-1000}
+        RUNTIME_USER: ${RUNTIME_USER:-ubuntu}
     image: multica-runtime:local
+    depends_on:
+      apt-downloader:
+        condition: service_completed_successfully
     volumes:
-      - ../var/.multica:/root/.multica
-      - ../var/.codex:/root/.codex
+      - /app:/app
+      - ../var/apt:/apt:ro
+      - ../var/.multica:/home/${RUNTIME_USER:-ubuntu}/.multica
+      - ../var/.codex:/home/${RUNTIME_USER:-ubuntu}/.codex
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      MULTICA_SERVER_URL: http://host.docker.internal:${PORT:-8080}
+      MULTICA_APP_URL: http://host.docker.internal:${FRONTEND_PORT:-3000}
+      FRONTEND_ORIGIN: http://host.docker.internal:${FRONTEND_PORT:-3000}
+      RUNTIME_USER: ${RUNTIME_USER:-ubuntu}
+      HOME: /home/${RUNTIME_USER:-ubuntu}
     ports:
       - "19514:19514"
     command: ["-lc", "sleep infinity"]

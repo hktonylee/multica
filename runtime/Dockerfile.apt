@@ -1,0 +1,14 @@
+# syntax=docker/dockerfile:1
+
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN mkdir -p /apt \
+	&& apt-get update \
+	&& apt-get install -y --no-install-recommends ca-certificates bash git openssh-client curl \
+	&& rm -rf /var/cache/apt/archives/*.deb
+
+COPY runtime/apt-packages.txt /tmp/apt-packages.txt
+
+CMD ["sh", "-ec", "apt-get update && mkdir -p /apt/partial && xargs apt-get install -y --download-only --no-install-recommends -o Dir::Cache::archives=/apt < /tmp/apt-packages.txt && find /apt -maxdepth 1 -type f -name '*.deb' -printf '%f\\n' | sort"]
