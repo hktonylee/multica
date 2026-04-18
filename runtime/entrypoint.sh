@@ -23,7 +23,7 @@ fi
 runtime_user="${RUNTIME_USER:-ubuntu}"
 runtime_home="$(getent passwd "$runtime_user" | cut -d: -f6)"
 
-mkdir -p "$runtime_home/.multica" "$runtime_home/.codex" /work
-chown -R "$runtime_user:$runtime_user" "$runtime_home/.multica" "$runtime_home/.codex" /work
+mkdir -p "$runtime_home/.multica" "$runtime_home/.codex" /usr/local/lib/node_modules /work
+chown -R "$runtime_user:$runtime_user" "$runtime_home/.multica" "$runtime_home/.codex" /usr/local/lib/node_modules /work
 
 exec gosu "$runtime_user" /bin/bash "$@"

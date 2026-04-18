@@ -54,7 +54,7 @@ selfhost:
 	@echo "==> Starting Multica via Docker Compose..."
 	docker compose -f docker-compose.selfhost.yml up -d --build
 	@echo "==> Starting runtime container..."
-	@mkdir -p var/.multica var/.codex
+	@mkdir -p var/.multica var/.codex var/node_modules
 	docker compose -f runtime/compose.yaml up -d --build runtime
 	@echo "==> Waiting for backend to be ready..."
 	@for i in $$(seq 1 30); do \
@@ -111,7 +111,7 @@ start:
 	@echo "Running migrations..."
 	cd server && go run ./cmd/migrate up
 	@echo "Starting runtime container..."
-	@mkdir -p var/.multica var/.codex
+	@mkdir -p var/.multica var/.codex var/node_modules
 	@docker compose -f runtime/compose.yaml up -d --build runtime
 	@echo "Starting backend and frontend..."
 	@trap 'kill 0' EXIT; \

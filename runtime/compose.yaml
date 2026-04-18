@@ -29,6 +29,7 @@ services:
     volumes:
       - /app:/app
       - ../var/apt:/apt:ro
+      - ../var/node_modules:/usr/local/lib/node_modules
       - ../var/.multica:/home/${RUNTIME_USER:-ubuntu}/.multica
       - ../var/.codex:/home/${RUNTIME_USER:-ubuntu}/.codex
     extra_hosts:
