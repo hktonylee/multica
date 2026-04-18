@@ -15,6 +15,8 @@ FROM ubuntu:24.04
 ARG RUNTIME_UID=1000
 ARG RUNTIME_GID=1000
 ARG RUNTIME_USER=ubuntu
+ARG KUBECTL_VERSION=v1.34.1
+ARG TARGETARCH
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -22,6 +24,18 @@ RUN apt-get update \
 	&& apt-get install -y --no-install-recommends ca-certificates bash git openssh-client curl gosu \
 	&& rm -rf /var/lib/apt/lists/* \
 	&& update-ca-certificates
+
+RUN set -eu; \
+	arch="${TARGETARCH:-amd64}"; \
+	case "$arch" in \
+		amd64|arm64) ;; \
+		*) echo "Unsupported kubectl architecture: $arch" >&2; exit 1 ;; \
+	esac; \
+	curl -fsSLo /usr/local/bin/kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${arch}/kubectl"; \
+	curl -fsSLo /tmp/kubectl.sha256 "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${arch}/kubectl.sha256"; \
+	echo "$(cat /tmp/kubectl.sha256)  /usr/local/bin/kubectl" | sha256sum -c -; \
+	chmod +x /usr/local/bin/kubectl; \
+	rm -f /tmp/kubectl.sha256
 
 RUN if getent group "${RUNTIME_USER}" >/dev/null; then \
 		groupmod --gid "${RUNTIME_GID}" "${RUNTIME_USER}"; \
