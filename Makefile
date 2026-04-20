@@ -21,6 +21,9 @@ NEXT_PUBLIC_API_URL ?= http://localhost:$(PORT)
 NEXT_PUBLIC_WS_URL ?= ws://localhost:$(PORT)/ws
 GOOGLE_REDIRECT_URI ?= $(FRONTEND_ORIGIN)/auth/callback
 MULTICA_SERVER_URL ?= ws://localhost:$(PORT)/ws
+RUNTIME_USER ?= $(shell id -un)
+RUNTIME_UID ?= $(shell id -u)
+RUNTIME_GID ?= $(shell id -g)
 
 export
 
@@ -54,7 +57,7 @@ selfhost:
 	@echo "==> Starting Multica via Docker Compose..."
 	docker compose -f docker-compose.selfhost.yml up -d --build
 	@echo "==> Starting runtime container..."
-	@mkdir -p var/.multica var/.codex var/node_modules
+	@mkdir -p var/.multica var/.codex var/.kube var/.local var/.ssh var/node_modules
 	docker compose -f runtime/compose.yaml up -d --build runtime
 	@echo "==> Waiting for backend to be ready..."
 	@for i in $$(seq 1 30); do \
@@ -111,7 +114,7 @@ start:
 	@echo "Running migrations..."
 	cd server && go run ./cmd/migrate up
 	@echo "Starting runtime container..."
-	@mkdir -p var/.multica var/.codex var/node_modules
+	@mkdir -p var/.multica var/.codex var/.kube var/.local var/.ssh var/node_modules
 	@docker compose -f runtime/compose.yaml up -d --build runtime
 	@echo "Starting backend and frontend..."
 	@trap 'kill 0' EXIT; \

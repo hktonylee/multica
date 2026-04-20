@@ -23,6 +23,7 @@ services:
         RUNTIME_GID: ${RUNTIME_GID:-1000}
         RUNTIME_USER: ${RUNTIME_USER:-ubuntu}
     image: multica-runtime:local
+    network_mode: host
     depends_on:
       apt-downloader:
         condition: service_completed_successfully
@@ -32,14 +33,16 @@ services:
       - ../var/node_modules:/usr/local/lib/node_modules
       - ../var/.multica:/home/${RUNTIME_USER:-ubuntu}/.multica
       - ../var/.codex:/home/${RUNTIME_USER:-ubuntu}/.codex
+      - ../var/.kube:/home/${RUNTIME_USER:-ubuntu}/.kube
+      - ../var/.local:/home/${RUNTIME_USER:-ubuntu}/.local
+      - ../var/.ssh:/home/${RUNTIME_USER:-ubuntu}/.ssh
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
-      MULTICA_SERVER_URL: http://host.docker.internal:${PORT:-8080}
-      MULTICA_APP_URL: http://host.docker.internal:${FRONTEND_PORT:-3000}
-      FRONTEND_ORIGIN: http://host.docker.internal:${FRONTEND_PORT:-3000}
+      MULTICA_SERVER_URL: http://127.0.0.1:${PORT:-8080}
+      MULTICA_APP_URL: http://127.0.0.1:${FRONTEND_PORT:-3000}
+      FRONTEND_ORIGIN: http://127.0.0.1:${FRONTEND_PORT:-3000}
       RUNTIME_USER: ${RUNTIME_USER:-ubuntu}
       HOME: /home/${RUNTIME_USER:-ubuntu}
-    ports:
-      - "19514:19514"
-    command: ["-lc", "sleep infinity"]
+      NPM_CONFIG_PREFIX: /home/${RUNTIME_USER:-ubuntu}/.local
+    command: ["-lc", "runtime-start"]

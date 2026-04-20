@@ -54,7 +54,11 @@ WORKDIR /work
 
 COPY --from=builder /out/multica /usr/local/bin/multica
 COPY runtime/entrypoint.sh /usr/local/bin/runtime-entrypoint
+COPY runtime/start.sh /usr/local/bin/runtime-start
+COPY runtime/codex-wrapper.sh /usr/local/bin/codex
 RUN chmod +x /usr/local/bin/runtime-entrypoint \
+	&& chmod +x /usr/local/bin/runtime-start \
+	&& chmod +x /usr/local/bin/codex \
 	&& chown "${RUNTIME_UID}:${RUNTIME_GID}" /work
 
 # Daemon local health endpoint.
