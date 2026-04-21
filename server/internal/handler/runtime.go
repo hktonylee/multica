@@ -9,24 +9,26 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/multica-ai/multica/server/pkg/agent"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/protocol"
 )
 
 type AgentRuntimeResponse struct {
-	ID          string  `json:"id"`
-	WorkspaceID string  `json:"workspace_id"`
-	DaemonID    *string `json:"daemon_id"`
-	Name        string  `json:"name"`
-	RuntimeMode string  `json:"runtime_mode"`
-	Provider    string  `json:"provider"`
-	Status      string  `json:"status"`
-	DeviceInfo  string  `json:"device_info"`
-	Metadata    any     `json:"metadata"`
-	OwnerID     *string `json:"owner_id"`
-	LastSeenAt  *string `json:"last_seen_at"`
-	CreatedAt   string  `json:"created_at"`
-	UpdatedAt   string  `json:"updated_at"`
+	ID           string  `json:"id"`
+	WorkspaceID  string  `json:"workspace_id"`
+	DaemonID     *string `json:"daemon_id"`
+	Name         string  `json:"name"`
+	RuntimeMode  string  `json:"runtime_mode"`
+	Provider     string  `json:"provider"`
+	LaunchHeader string  `json:"launch_header"`
+	Status       string  `json:"status"`
+	DeviceInfo   string  `json:"device_info"`
+	Metadata     any     `json:"metadata"`
+	OwnerID      *string `json:"owner_id"`
+	LastSeenAt   *string `json:"last_seen_at"`
+	CreatedAt    string  `json:"created_at"`
+	UpdatedAt    string  `json:"updated_at"`
 }
 
 func runtimeToResponse(rt db.AgentRuntime) AgentRuntimeResponse {
@@ -39,35 +41,26 @@ func runtimeToResponse(rt db.AgentRuntime) AgentRuntimeResponse {
 	}
 
 	return AgentRuntimeResponse{
-		ID:          uuidToString(rt.ID),
-		WorkspaceID: uuidToString(rt.WorkspaceID),
-		DaemonID:    textToPtr(rt.DaemonID),
-		Name:        rt.Name,
-		RuntimeMode: rt.RuntimeMode,
-		Provider:    rt.Provider,
-		Status:      rt.Status,
-		DeviceInfo:  rt.DeviceInfo,
-		Metadata:    metadata,
-		OwnerID:     uuidToPtr(rt.OwnerID),
-		LastSeenAt:  timestampToPtr(rt.LastSeenAt),
-		CreatedAt:   timestampToString(rt.CreatedAt),
-		UpdatedAt:   timestampToString(rt.UpdatedAt),
+		ID:           uuidToString(rt.ID),
+		WorkspaceID:  uuidToString(rt.WorkspaceID),
+		DaemonID:     textToPtr(rt.DaemonID),
+		Name:         rt.Name,
+		RuntimeMode:  rt.RuntimeMode,
+		Provider:     rt.Provider,
+		LaunchHeader: agent.LaunchHeader(rt.Provider),
+		Status:       rt.Status,
+		DeviceInfo:   rt.DeviceInfo,
+		Metadata:     metadata,
+		OwnerID:      uuidToPtr(rt.OwnerID),
+		LastSeenAt:   timestampToPtr(rt.LastSeenAt),
+		CreatedAt:    timestampToString(rt.CreatedAt),
+		UpdatedAt:    timestampToString(rt.UpdatedAt),
 	}
 }
 
 // ---------------------------------------------------------------------------
 // Runtime Usage
 // ---------------------------------------------------------------------------
-
-type RuntimeUsageEntry struct {
-	Date             string `json:"date"`
-	Provider         string `json:"provider"`
-	Model            string `json:"model"`
-	InputTokens      int64  `json:"input_tokens"`
-	OutputTokens     int64  `json:"output_tokens"`
-	CacheReadTokens  int64  `json:"cache_read_tokens"`
-	CacheWriteTokens int64  `json:"cache_write_tokens"`
-}
 
 type RuntimeUsageResponse struct {
 	RuntimeID        string `json:"runtime_id"`
@@ -80,48 +73,10 @@ type RuntimeUsageResponse struct {
 	CacheWriteTokens int64  `json:"cache_write_tokens"`
 }
 
-// ReportRuntimeUsage receives usage data from the daemon.
-func (h *Handler) ReportRuntimeUsage(w http.ResponseWriter, r *http.Request) {
-	runtimeID := chi.URLParam(r, "runtimeId")
-	if runtimeID == "" {
-		writeError(w, http.StatusBadRequest, "runtimeId is required")
-		return
-	}
-
-	// Verify the caller owns this runtime's workspace.
-	if _, ok := h.requireDaemonRuntimeAccess(w, r, runtimeID); !ok {
-		return
-	}
-
-	var req struct {
-		Entries []RuntimeUsageEntry `json:"entries"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	for _, entry := range req.Entries {
-		date, err := time.Parse("2006-01-02", entry.Date)
-		if err != nil {
-			continue
-		}
-		h.Queries.UpsertRuntimeUsage(r.Context(), db.UpsertRuntimeUsageParams{
-			RuntimeID:        parseUUID(runtimeID),
-			Date:             pgtype.Date{Time: date, Valid: true},
-			Provider:         entry.Provider,
-			Model:            entry.Model,
-			InputTokens:      entry.InputTokens,
-			OutputTokens:     entry.OutputTokens,
-			CacheReadTokens:  entry.CacheReadTokens,
-			CacheWriteTokens: entry.CacheWriteTokens,
-		})
-	}
-
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-}
-
-// GetRuntimeUsage returns usage data for a runtime (protected route).
+// GetRuntimeUsage returns daily token usage for a runtime, aggregated from
+// per-task usage records captured by the daemon. This is scoped to
+// Daemon-executed tasks only (i.e. excludes users' local CLI usage of the
+// same tool).
 func (h *Handler) GetRuntimeUsage(w http.ResponseWriter, r *http.Request) {
 	runtimeID := chi.URLParam(r, "runtimeId")
 
@@ -135,17 +90,11 @@ func (h *Handler) GetRuntimeUsage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	days := 90
-	if d := r.URL.Query().Get("days"); d != "" {
-		if parsed, err := strconv.Atoi(d); err == nil && parsed > 0 && parsed <= 365 {
-			days = parsed
-		}
-	}
-	since := pgtype.Date{Time: time.Now().AddDate(0, 0, -days), Valid: true}
+	since := parseSinceParam(r, 90)
 
 	rows, err := h.Queries.ListRuntimeUsage(r.Context(), db.ListRuntimeUsageParams{
 		RuntimeID: parseUUID(runtimeID),
-		Date:      since,
+		Since:     since,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to list usage")
@@ -204,7 +153,7 @@ func (h *Handler) GetRuntimeTaskActivity(w http.ResponseWriter, r *http.Request)
 
 // GetWorkspaceUsageByDay returns daily token usage aggregated by model for the workspace.
 func (h *Handler) GetWorkspaceUsageByDay(w http.ResponseWriter, r *http.Request) {
-	workspaceID := resolveWorkspaceID(r)
+	workspaceID := h.resolveWorkspaceID(r)
 	since := parseSinceParam(r, 30)
 
 	rows, err := h.Queries.GetWorkspaceUsageByDay(r.Context(), db.GetWorkspaceUsageByDayParams{
@@ -244,7 +193,7 @@ func (h *Handler) GetWorkspaceUsageByDay(w http.ResponseWriter, r *http.Request)
 
 // GetWorkspaceUsageSummary returns total token usage aggregated by model for the workspace.
 func (h *Handler) GetWorkspaceUsageSummary(w http.ResponseWriter, r *http.Request) {
-	workspaceID := resolveWorkspaceID(r)
+	workspaceID := h.resolveWorkspaceID(r)
 	since := parseSinceParam(r, 30)
 
 	rows, err := h.Queries.GetWorkspaceUsageSummary(r.Context(), db.GetWorkspaceUsageSummaryParams{
@@ -293,7 +242,7 @@ func parseSinceParam(r *http.Request, defaultDays int) pgtype.Timestamptz {
 }
 
 func (h *Handler) ListAgentRuntimes(w http.ResponseWriter, r *http.Request) {
-	workspaceID := resolveWorkspaceID(r)
+	workspaceID := h.resolveWorkspaceID(r)
 
 	var runtimes []db.AgentRuntime
 	var err error

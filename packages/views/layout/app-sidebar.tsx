@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@multica/ui/lib/utils";
 import { AppLink, useNavigation } from "../navigation";
 import {
@@ -66,7 +66,7 @@ import {
   PopoverTrigger,
 } from "@multica/ui/components/ui/popover";
 import { useAuthStore } from "@multica/core/auth";
-import { useWorkspaceStore } from "@multica/core/workspace";
+import { useCurrentWorkspace, useWorkspacePaths, paths } from "@multica/core/paths";
 import { workspaceListOptions, myInvitationListOptions, workspaceKeys } from "@multica/core/workspace/queries";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { inboxKeys, deduplicateInboxItems } from "@multica/core/inbox/queries";
@@ -76,23 +76,38 @@ import { useMyRuntimesNeedUpdate } from "@multica/core/runtimes/hooks";
 import { pinListOptions } from "@multica/core/pins/queries";
 import { useDeletePin, useReorderPins } from "@multica/core/pins/mutations";
 import type { PinnedItem } from "@multica/core/types";
+import { useLogout } from "../auth";
 
-const personalNav = [
-  { href: "/inbox", label: "Inbox", icon: Inbox },
-  { href: "/my-issues", label: "My Issues", icon: CircleUser },
+// Nav items reference WorkspacePaths method names so they can be resolved
+// against the current workspace slug at render time (see AppSidebar body).
+// Only parameterless paths are valid nav destinations.
+type NavKey =
+  | "inbox"
+  | "myIssues"
+  | "issues"
+  | "projects"
+  | "autopilots"
+  | "agents"
+  | "runtimes"
+  | "skills"
+  | "settings";
+
+const personalNav: { key: NavKey; label: string; icon: typeof Inbox }[] = [
+  { key: "inbox", label: "Inbox", icon: Inbox },
+  { key: "myIssues", label: "My Issues", icon: CircleUser },
 ];
 
-const workspaceNav = [
-  { href: "/issues", label: "Issues", icon: ListTodo },
-  { href: "/projects", label: "Projects", icon: FolderKanban },
-  { href: "/autopilots", label: "Autopilot", icon: Zap },
-  { href: "/agents", label: "Agents", icon: Bot },
+const workspaceNav: { key: NavKey; label: string; icon: typeof Inbox }[] = [
+  { key: "issues", label: "Issues", icon: ListTodo },
+  { key: "projects", label: "Projects", icon: FolderKanban },
+  { key: "autopilots", label: "Autopilot", icon: Zap },
+  { key: "agents", label: "Agents", icon: Bot },
 ];
 
-const configureNav = [
-  { href: "/runtimes", label: "Runtimes", icon: Monitor },
-  { href: "/skills", label: "Skills", icon: BookOpenText },
-  { href: "/settings", label: "Settings", icon: Settings },
+const configureNav: { key: NavKey; label: string; icon: typeof Inbox }[] = [
+  { key: "runtimes", label: "Runtimes", icon: Monitor },
+  { key: "skills", label: "Skills", icon: BookOpenText },
+  { key: "settings", label: "Settings", icon: Settings },
 ];
 
 function DraftDot() {
@@ -101,7 +116,7 @@ function DraftDot() {
   return <span className="absolute top-0 right-0 size-1.5 rounded-full bg-brand" />;
 }
 
-function SortablePinItem({ pin, pathname, onUnpin }: { pin: PinnedItem; pathname: string; onUnpin: () => void }) {
+function SortablePinItem({ pin, href, pathname, onUnpin }: { pin: PinnedItem; href: string; pathname: string; onUnpin: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: pin.id });
   const wasDragged = useRef(false);
 
@@ -110,7 +125,6 @@ function SortablePinItem({ pin, pathname, onUnpin }: { pin: PinnedItem; pathname
   }, [isDragging]);
 
   const style = { transform: CSS.Transform.toString(transform), transition };
-  const href = pin.item_type === "issue" ? `/issues/${pin.item_id}` : `/projects/${pin.item_id}`;
   const isActive = pathname === href;
   const label = pin.item_type === "issue" && pin.identifier ? `${pin.identifier} ${pin.title}` : pin.title;
 
@@ -125,7 +139,7 @@ function SortablePinItem({ pin, pathname, onUnpin }: { pin: PinnedItem; pathname
       <SidebarMenuButton
         size="sm"
         isActive={isActive}
-        render={<AppLink href={href} />}
+        render={<AppLink href={href} draggable={false} />}
         onClick={(event) => {
           if (wasDragged.current) {
             wasDragged.current = false;
@@ -133,7 +147,10 @@ function SortablePinItem({ pin, pathname, onUnpin }: { pin: PinnedItem; pathname
             return;
           }
         }}
-        className="text-muted-foreground hover:not-data-active:bg-sidebar-accent/70 data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground"
+        className={cn(
+          "text-muted-foreground hover:not-data-active:bg-sidebar-accent/70 data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground",
+          isDragging && "pointer-events-none",
+        )}
       >
         {pin.item_type === "issue" && pin.status ? (
           /* Override parent [&_svg]:size-4 — pinned items need smaller icons to match sm size */
@@ -182,9 +199,9 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
   const { pathname, push } = useNavigation();
   const user = useAuthStore((s) => s.user);
   const userId = useAuthStore((s) => s.user?.id);
-  const authLogout = useAuthStore((s) => s.logout);
-  const workspace = useWorkspaceStore((s) => s.workspace);
-  const switchWorkspace = useWorkspaceStore((s) => s.switchWorkspace);
+  const logout = useLogout();
+  const workspace = useCurrentWorkspace();
+  const p = useWorkspacePaths();
   const { data: workspaces = [] } = useQuery(workspaceListOptions());
   const { data: myInvitations = [] } = useQuery(myInvitationListOptions());
 
@@ -206,25 +223,58 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
   const deletePin = useDeletePin();
   const reorderPins = useReorderPins();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  // Local presentational copy of pinnedItems for drop-animation stability.
+  // Follows TQ at rest; frozen during a drag gesture so a mid-drag cache
+  // write (our own optimistic update, or a WS refetch) cannot reorder the
+  // DOM under dnd-kit while its drop animation is still interpolating.
+  const [localPinned, setLocalPinned] = useState<PinnedItem[]>(pinnedItems);
+  const isDraggingRef = useRef(false);
+  useEffect(() => {
+    if (!isDraggingRef.current) {
+      setLocalPinned(pinnedItems);
+    }
+  }, [pinnedItems]);
+
+  const handleDragStart = useCallback(() => {
+    isDraggingRef.current = true;
+  }, []);
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
+      isDraggingRef.current = false;
       const { active, over } = event;
       if (!over || active.id === over.id) return;
-      const oldIndex = pinnedItems.findIndex((p) => p.id === active.id);
-      const newIndex = pinnedItems.findIndex((p) => p.id === over.id);
+      const oldIndex = localPinned.findIndex((p) => p.id === active.id);
+      const newIndex = localPinned.findIndex((p) => p.id === over.id);
       if (oldIndex === -1 || newIndex === -1) return;
-      const reordered = arrayMove(pinnedItems, oldIndex, newIndex);
+      const reordered = arrayMove(localPinned, oldIndex, newIndex);
+      setLocalPinned(reordered);
       reorderPins.mutate(reordered);
     },
-    [pinnedItems, reorderPins],
+    [localPinned, reorderPins],
   );
 
   const queryClient = useQueryClient();
   const acceptInvitationMut = useMutation({
     mutationFn: (id: string) => api.acceptInvitation(id),
-    onSuccess: () => {
+    // After accepting an invitation, navigate INTO the newly-joined workspace.
+    // Otherwise the user stays on their current workspace and just sees the
+    // new one appear in the dropdown — silent and confusing (this is MUL-820).
+    onSuccess: async (_, invitationId) => {
+      const invitation = myInvitations.find((i) => i.id === invitationId);
       queryClient.invalidateQueries({ queryKey: workspaceKeys.myInvitations() });
-      queryClient.invalidateQueries({ queryKey: workspaceKeys.list() });
+      // staleTime: 0 forces a real network fetch — we need the joined workspace
+      // in the list before we can resolve its slug for navigation.
+      const list = await queryClient.fetchQuery({
+        ...workspaceListOptions(),
+        staleTime: 0,
+      });
+      const joined = invitation
+        ? list.find((w) => w.id === invitation.workspace_id)
+        : null;
+      if (joined) {
+        push(paths.workspace(joined.slug).issues());
+      }
     },
   });
   const declineInvitationMut = useMutation({
@@ -233,11 +283,6 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
       queryClient.invalidateQueries({ queryKey: workspaceKeys.myInvitations() });
     },
   });
-  const logout = () => {
-    queryClient.clear();
-    authLogout();
-    useWorkspaceStore.getState().clearWorkspace();
-  };
 
   // Global "C" shortcut to open create-issue modal (like Linear)
   useEffect(() => {
@@ -253,7 +298,7 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
         if (useModalStore.getState().modal) return;
         e.preventDefault();
         // Auto-fill project when on a project detail page
-        const projectMatch = pathname.match(/^\/projects\/([^/]+)$/);
+        const projectMatch = pathname.match(/^\/[^/]+\/projects\/([^/]+)$/);
         const data = projectMatch ? { project_id: projectMatch[1] } : undefined;
         useModalStore.getState().open("create-issue", data);
       }
@@ -300,12 +345,9 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
                     {workspaces.map((ws) => (
                       <DropdownMenuItem
                         key={ws.id}
-                        onClick={() => {
-                          if (ws.id !== workspace?.id) {
-                            push("/issues");
-                            switchWorkspace(ws);
-                          }
-                        }}
+                        render={
+                          <AppLink href={paths.workspace(ws.slug).issues()} />
+                        }
                       >
                         <WorkspaceAvatar name={ws.name} size="sm" />
                         <span className="flex-1 truncate">{ws.name}</span>
@@ -400,12 +442,13 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
             <SidebarGroupContent>
               <SidebarMenu className="gap-0.5">
                 {personalNav.map((item) => {
-                  const isActive = pathname === item.href;
+                  const href = p[item.key]();
+                  const isActive = pathname === href;
                   return (
-                    <SidebarMenuItem key={item.href}>
+                    <SidebarMenuItem key={item.key}>
                       <SidebarMenuButton
                         isActive={isActive}
-                        render={<AppLink href={item.href} />}
+                        render={<AppLink href={href} />}
                         className="text-muted-foreground hover:not-data-active:bg-sidebar-accent/70 data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground"
                       >
                         <item.icon />
@@ -423,7 +466,7 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
             </SidebarGroupContent>
           </SidebarGroup>
 
-          {pinnedItems.length > 0 && (
+          {localPinned.length > 0 && (
             <Collapsible defaultOpen>
               <SidebarGroup className="group/pinned">
                 <SidebarGroupLabel
@@ -432,17 +475,18 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
                 >
                   <span>Pinned</span>
                   <ChevronRight className="!size-3 ml-1 stroke-[2.5] transition-transform duration-200 group-data-[panel-open]/trigger:rotate-90" />
-                  <span className="ml-auto text-[10px] text-muted-foreground opacity-0 transition-opacity group-hover/pinned:opacity-100">{pinnedItems.length}</span>
+                  <span className="ml-auto text-[10px] text-muted-foreground opacity-0 transition-opacity group-hover/pinned:opacity-100">{localPinned.length}</span>
                 </SidebarGroupLabel>
                 <CollapsibleContent>
                   <SidebarGroupContent>
-                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                      <SortableContext items={pinnedItems.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+                      <SortableContext items={localPinned.map((p) => p.id)} strategy={verticalListSortingStrategy}>
                         <SidebarMenu className="gap-0.5">
-                          {pinnedItems.map((pin: PinnedItem) => (
+                          {localPinned.map((pin: PinnedItem) => (
                             <SortablePinItem
                               key={pin.id}
                               pin={pin}
+                              href={pin.item_type === "issue" ? p.issueDetail(pin.item_id) : p.projectDetail(pin.item_id)}
                               pathname={pathname}
                               onUnpin={() => deletePin.mutate({ itemType: pin.item_type, itemId: pin.item_id })}
                             />
@@ -461,12 +505,13 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
             <SidebarGroupContent>
               <SidebarMenu className="gap-0.5">
                 {workspaceNav.map((item) => {
-                  const isActive = pathname === item.href;
+                  const href = p[item.key]();
+                  const isActive = pathname === href;
                   return (
-                    <SidebarMenuItem key={item.href}>
+                    <SidebarMenuItem key={item.key}>
                       <SidebarMenuButton
                         isActive={isActive}
-                        render={<AppLink href={item.href} />}
+                        render={<AppLink href={href} />}
                         className="text-muted-foreground hover:not-data-active:bg-sidebar-accent/70 data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground"
                       >
                         <item.icon />
@@ -484,12 +529,13 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
             <SidebarGroupContent>
               <SidebarMenu className="gap-0.5">
                 {configureNav.map((item) => {
-                  const isActive = pathname === item.href;
+                  const href = p[item.key]();
+                  const isActive = pathname === href;
                   return (
-                    <SidebarMenuItem key={item.href}>
+                    <SidebarMenuItem key={item.key}>
                       <SidebarMenuButton
                         isActive={isActive}
-                        render={<AppLink href={item.href} />}
+                        render={<AppLink href={href} />}
                         className="text-muted-foreground hover:not-data-active:bg-sidebar-accent/70 data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground"
                       >
                         <item.icon />

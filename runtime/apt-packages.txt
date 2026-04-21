@@ -1,0 +1,6 @@
+vim
+netcat-openbsd
+iputils-ping
+less
+npm
+bubblewrap

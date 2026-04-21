@@ -70,7 +70,7 @@ import { AgentLiveCard, TaskRunHistory } from "./agent-live-card";
 import { BacklogAgentHintDialog } from "./backlog-agent-hint-dialog";
 import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@multica/core/auth";
-import { useWorkspaceStore } from "@multica/core/workspace";
+import { useCurrentWorkspace, useWorkspacePaths } from "@multica/core/paths";
 import { useActorName } from "@multica/core/workspace/hooks";
 import { useWorkspaceId } from "@multica/core/hooks";
 import { issueListOptions, issueDetailOptions, childIssuesOptions, issueUsageOptions } from "@multica/core/issues/queries";
@@ -328,7 +328,8 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
   const router = useNavigation();
   const user = useAuthStore((s) => s.user);
   const userId = useAuthStore((s) => s.user?.id);
-  const workspace = useWorkspaceStore((s) => s.workspace);
+  const workspace = useCurrentWorkspace();
+  const paths = useWorkspacePaths();
 
   // Issue navigation — read from TQ list cache
   const wsId = useWorkspaceId();
@@ -385,17 +386,17 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
 
   // Custom hooks — encapsulate timeline, reactions, subscribers
   const {
-    timeline, loading: timelineLoading, submitComment, submitReply,
+    timeline, submitComment, submitReply,
     editComment, deleteComment, toggleReaction: handleToggleReaction,
   } = useIssueTimeline(id, user?.id);
 
   const {
-    reactions: issueReactions, loading: reactionsLoading,
+    reactions: issueReactions,
     toggleReaction: handleToggleIssueReaction,
   } = useIssueReactions(id, user?.id);
 
   const {
-    subscribers, loading: subscribersLoading, isSubscribed, toggleSubscribe: handleToggleSubscribe, toggleSubscriber,
+    subscribers, isSubscribed, toggleSubscribe: handleToggleSubscribe, toggleSubscriber,
   } = useIssueSubscribers(id, user?.id);
 
   // Token usage
@@ -488,7 +489,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
       await deleteIssueMutation.mutateAsync(issue!.id);
       toast.success("Issue deleted");
       if (onDelete) onDelete();
-      else router.push("/issues");
+      else router.push(paths.issues());
     } catch {
       toast.error("Failed to delete issue");
       setDeleting(false);
@@ -498,45 +499,44 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
   if (loading) {
     return (
       <div className="flex flex-1 min-h-0 flex-col">
-        {/* Header skeleton */}
         <div className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
           <Skeleton className="h-4 w-16" />
           <Skeleton className="h-4 w-4" />
           <Skeleton className="h-4 w-24" />
         </div>
         <div className="flex flex-1 min-h-0">
-          {/* Content skeleton */}
-          <div className="flex-1 p-8 space-y-6">
-            <Skeleton className="h-8 w-3/4" />
-            <div className="space-y-2">
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-5/6" />
-              <Skeleton className="h-4 w-2/3" />
-            </div>
-            <Skeleton className="h-px w-full" />
-            <div className="space-y-3">
-              <Skeleton className="h-4 w-20" />
-              <div className="flex items-start gap-3">
-                <Skeleton className="h-8 w-8 rounded-full" />
-                <div className="flex-1 space-y-2">
-                  <Skeleton className="h-4 w-32" />
-                  <Skeleton className="h-16 w-full rounded-lg" />
+          <div className="flex-1 overflow-y-auto">
+            <div className="mx-auto w-full max-w-4xl px-8 py-8 space-y-6">
+              <Skeleton className="h-8 w-3/4" />
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-5/6" />
+                <Skeleton className="h-4 w-2/3" />
+              </div>
+              <Skeleton className="h-px w-full" />
+              <div className="space-y-3">
+                <Skeleton className="h-4 w-20" />
+                <div className="flex items-start gap-3">
+                  <Skeleton className="h-8 w-8 shrink-0 rounded-full" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-16 w-full rounded-lg" />
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-          {/* Sidebar skeleton */}
-          <div className="w-64 border-l p-4 space-y-4">
+          <div className="hidden md:block w-80 border-l p-4 space-y-5">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="flex items-center justify-between">
-                <Skeleton className="h-3 w-16" />
+              <div key={i} className="flex items-center gap-2">
+                <Skeleton className="h-3 w-16 shrink-0" />
                 <Skeleton className="h-5 w-24" />
               </div>
             ))}
             <Skeleton className="h-px w-full" />
             {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="flex items-center justify-between">
-                <Skeleton className="h-3 w-16" />
+              <div key={i} className="flex items-center gap-2">
+                <Skeleton className="h-3 w-16 shrink-0" />
                 <Skeleton className="h-4 w-28" />
               </div>
             ))}
@@ -551,7 +551,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
       <div className="flex flex-1 min-h-0 flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
         <p>This issue does not exist or has been deleted in this workspace.</p>
         {!onDelete && (
-          <Button variant="outline" size="sm" onClick={() => router.push("/issues")}>
+          <Button variant="outline" size="sm" onClick={() => router.push(paths.issues())}>
             <ChevronLeft className="mr-1 h-3.5 w-3.5" />
             Back to Issues
           </Button>
@@ -602,7 +602,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
           </button>
           {parentIssueOpen && <div className="pl-2">
             <AppLink
-              href={`/issues/${parentIssue.id}`}
+              href={paths.issueDetail(parentIssue.id)}
               className="flex items-center gap-1.5 rounded-md px-2 py-1.5 -mx-2 text-xs hover:bg-accent/50 transition-colors group"
             >
               <StatusIcon status={parentIssue.status} className="h-3.5 w-3.5 shrink-0" />
@@ -678,10 +678,21 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
             {workspace && (
               <>
                 <AppLink
-                  href="/issues"
+                  href={paths.issues()}
                   className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
                 >
                   {workspace.name}
+                </AppLink>
+                <ChevronRight className="h-3 w-3 text-muted-foreground/50 shrink-0" />
+              </>
+            )}
+            {parentIssue && (
+              <>
+                <AppLink
+                  href={paths.issueDetail(parentIssue.id)}
+                  className="text-muted-foreground hover:text-foreground transition-colors truncate shrink-0"
+                >
+                  {parentIssue.identifier}
                 </AppLink>
                 <ChevronRight className="h-3 w-3 text-muted-foreground/50 shrink-0" />
               </>
@@ -1003,7 +1014,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
 
           {parentIssue && (
             <AppLink
-              href={`/issues/${parentIssue.id}`}
+              href={paths.issueDetail(parentIssue.id)}
               className="mt-2 inline-flex max-w-full items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors group/parent"
             >
               <span className="font-medium shrink-0">Sub-issue of</span>
@@ -1032,25 +1043,18 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
               key={id}
               defaultValue={issue.description || ""}
               placeholder="Add description..."
-              onUpdate={(md) => handleUpdateField({ description: md || undefined })}
+              onUpdate={(md) => handleUpdateField({ description: md })}
               onUploadFile={handleDescriptionUpload}
               debounceMs={1500}
             />
 
             <div className="flex items-center gap-1 mt-3">
-              {reactionsLoading ? (
-                <div className="flex items-center gap-1">
-                  <Skeleton className="h-7 w-14 rounded-full" />
-                  <Skeleton className="h-7 w-14 rounded-full" />
-                </div>
-              ) : (
-                <ReactionBar
-                  reactions={issueReactions}
-                  currentUserId={user?.id}
-                  onToggle={handleToggleIssueReaction}
-                  getActorName={getActorName}
-                />
-              )}
+              <ReactionBar
+                reactions={issueReactions}
+                currentUserId={user?.id}
+                onToggle={handleToggleIssueReaction}
+                getActorName={getActorName}
+              />
               <FileUploadButton
                 size="sm"
                 onSelect={(file) => descEditorRef.current?.uploadFile(file)}
@@ -1133,7 +1137,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
                       return (
                         <AppLink
                           key={child.id}
-                          href={`/issues/${child.id}`}
+                          href={paths.issueDetail(child.id)}
                           className="flex items-center gap-2.5 px-3 py-2 hover:bg-accent/50 transition-colors group/row"
                         >
                           <StatusIcon
@@ -1184,15 +1188,6 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
                 <h2 className="text-base font-semibold">Activity</h2>
               </div>
               <div className="flex items-center gap-2">
-                {subscribersLoading ? (
-                  <div className="flex items-center gap-1">
-                    <Skeleton className="h-4 w-16" />
-                    <div className="flex -space-x-1">
-                      <Skeleton className="h-6 w-6 rounded-full" />
-                      <Skeleton className="h-6 w-6 rounded-full" />
-                    </div>
-                  </div>
-                ) : (<>
                 <button
                   onClick={handleToggleSubscribe}
                   className="text-xs text-muted-foreground hover:text-foreground transition-colors"
@@ -1270,7 +1265,6 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
                     </Command>
                   </PopoverContent>
                 </Popover>
-                </>)}
               </div>
             </div>
 
@@ -1285,19 +1279,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
 
             {/* Timeline entries */}
             <div className="mt-4 flex flex-col gap-3">
-              {timelineLoading ? (
-                <div className="space-y-4">
-                  {Array.from({ length: 3 }).map((_, i) => (
-                    <div key={i} className="flex items-start gap-3 px-4">
-                      <Skeleton className="h-8 w-8 rounded-full shrink-0" />
-                      <div className="flex-1 space-y-2">
-                        <Skeleton className="h-4 w-32" />
-                        <Skeleton className="h-16 w-full rounded-lg" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (() => {
+              {(() => {
                 const topLevel = timeline.filter((e) => e.type === "activity" || !e.parent_id);
                 const repliesByParent = new Map<string, TimelineEntry[]>();
                 for (const e of timeline) {

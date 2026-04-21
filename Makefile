@@ -21,6 +21,9 @@ NEXT_PUBLIC_API_URL ?= http://localhost:$(PORT)
 NEXT_PUBLIC_WS_URL ?= ws://localhost:$(PORT)/ws
 GOOGLE_REDIRECT_URI ?= $(FRONTEND_ORIGIN)/auth/callback
 MULTICA_SERVER_URL ?= ws://localhost:$(PORT)/ws
+RUNTIME_USER ?= $(shell id -un)
+RUNTIME_UID ?= $(shell id -u)
+RUNTIME_GID ?= $(shell id -g)
 
 export
 
@@ -53,6 +56,9 @@ selfhost:
 	fi
 	@echo "==> Starting Multica via Docker Compose..."
 	docker compose -f docker-compose.selfhost.yml up -d --build
+	@echo "==> Starting runtime container..."
+	@mkdir -p var/.multica var/.codex var/.kube var/.local var/.ssh var/node_modules
+	docker compose -f runtime/compose.yaml up -d --build runtime
 	@echo "==> Waiting for backend to be ready..."
 	@for i in $$(seq 1 30); do \
 		if curl -sf http://localhost:$${PORT:-8080}/health > /dev/null 2>&1; then \
@@ -80,6 +86,7 @@ selfhost:
 # Stop all Docker Compose self-host services
 selfhost-stop:
 	@echo "==> Stopping Multica services..."
+	docker compose -f runtime/compose.yaml down
 	docker compose -f docker-compose.selfhost.yml down
 	@echo "✓ All services stopped."
 
@@ -106,6 +113,9 @@ start:
 	@bash scripts/ensure-postgres.sh "$(ENV_FILE)"
 	@echo "Running migrations..."
 	cd server && go run ./cmd/migrate up
+	@echo "Starting runtime container..."
+	@mkdir -p var/.multica var/.codex var/.kube var/.local var/.ssh var/node_modules
+	@docker compose -f runtime/compose.yaml up -d --build runtime
 	@echo "Starting backend and frontend..."
 	@trap 'kill 0' EXIT; \
 		(cd server && go run ./cmd/server) & \
@@ -116,6 +126,7 @@ start:
 stop:
 	$(REQUIRE_ENV)
 	@echo "Stopping services..."
+	@docker compose -f runtime/compose.yaml down
 	@-lsof -ti:$(PORT) | xargs kill -9 2>/dev/null
 	@-lsof -ti:$(FRONTEND_PORT) | xargs kill -9 2>/dev/null
 	@case "$(DATABASE_URL)" in \
@@ -182,7 +193,7 @@ server:
 	cd server && go run ./cmd/server
 
 daemon:
-	@$(MAKE) multica MULTICA_ARGS="daemon"
+	@$(MAKE) multica MULTICA_ARGS="daemon restart --profile local"
 
 cli:
 	@$(MAKE) multica MULTICA_ARGS="$(MULTICA_ARGS)"

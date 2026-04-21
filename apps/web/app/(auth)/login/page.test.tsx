@@ -11,13 +11,10 @@ function createWrapper() {
   );
 }
 
-const { mockSendCode, mockVerifyCode, mockHydrateWorkspace } = vi.hoisted(
-  () => ({
-    mockSendCode: vi.fn(),
-    mockVerifyCode: vi.fn(),
-    mockHydrateWorkspace: vi.fn(),
-  }),
-);
+const { mockSendCode, mockVerifyCode } = vi.hoisted(() => ({
+  mockSendCode: vi.fn(),
+  mockVerifyCode: vi.fn(),
+}));
 
 // Mock next/navigation
 vi.mock("next/navigation", () => ({
@@ -27,8 +24,14 @@ vi.mock("next/navigation", () => ({
 }));
 
 // Mock auth store — shared LoginPage uses getState().sendCode/verifyCode,
-// web wrapper uses useAuthStore((s) => s.user/isLoading)
-vi.mock("@multica/core/auth", () => {
+// web wrapper uses useAuthStore((s) => s.user/isLoading). Keep the real
+// sanitizeNextUrl so the redirect-sanitization rules are exercised rather
+// than silently drifting behind a mock reimplementation.
+vi.mock("@multica/core/auth", async () => {
+  const actual =
+    await vi.importActual<typeof import("@multica/core/auth")>(
+      "@multica/core/auth",
+    );
   const authState = {
     sendCode: mockSendCode,
     verifyCode: mockVerifyCode,
@@ -39,23 +42,13 @@ vi.mock("@multica/core/auth", () => {
     (selector: (s: typeof authState) => unknown) => selector(authState),
     { getState: () => authState },
   );
-  return { useAuthStore };
+  return { ...actual, useAuthStore };
 });
 
 // Mock auth-cookie
 vi.mock("@/features/auth/auth-cookie", () => ({
   setLoggedInCookie: vi.fn(),
 }));
-
-// Mock workspace store — shared LoginPage uses getState().hydrateWorkspace
-vi.mock("@multica/core/workspace", () => {
-  const wsState = { hydrateWorkspace: mockHydrateWorkspace };
-  const useWorkspaceStore = Object.assign(
-    (selector: (s: typeof wsState) => unknown) => selector(wsState),
-    { getState: () => wsState },
-  );
-  return { useWorkspaceStore };
-});
 
 // Mock api
 vi.mock("@multica/core/api", () => ({
